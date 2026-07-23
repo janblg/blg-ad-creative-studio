@@ -14,8 +14,14 @@ const schema = z.object({
   // Any passphrase; a 32-byte key is derived from it (scrypt). Keep it safe:
   // losing it makes stored provider keys unrecoverable.
   SECRETS_MASTER_KEY: z.string().min(16),
-  NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  // Optional and lenient: it's only used to build absolute redirect URLs, and
+  // must never block the app if unset or slightly malformed.
+  NEXT_PUBLIC_APP_URL: z.string().optional(),
 });
+
+export function appUrl(): string {
+  return env().NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "http://localhost:3000";
+}
 
 let cached: z.infer<typeof schema> | null = null;
 
