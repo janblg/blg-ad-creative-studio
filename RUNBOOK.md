@@ -30,11 +30,18 @@ There are three accounts to create (all have free tiers): **GitHub**,
 
 1. Sign up at https://supabase.com → **New project**. Name it `blg-ad-studio`.
    Pick a region near you and set a strong database password (save it).
-2. When it finishes, open **Project Settings → API** and copy these three values
-   (you'll paste them into Vercel in step 4):
-   - **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
-   - **anon public** key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - **service_role** key → `SUPABASE_SERVICE_ROLE_KEY` *(secret — never share)*
+2. When it finishes, open **Project Settings → API Keys** and copy these values
+   (you'll paste them into Vercel in step 4 — save them somewhere private):
+   - **Project URL** — find it under **Settings → API → Project URL**, or in the
+     **Connect** dialog (top of the dashboard). Looks like
+     `https://xxxxxxxx.supabase.co` → `NEXT_PUBLIC_SUPABASE_URL`
+   - **Publishable key** (starts with `sb_publishable_…`, browser-safe) →
+     `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - **Secret key** (starts with `sb_secret_…`, backend only — **never share**) →
+     `SUPABASE_SERVICE_ROLE_KEY`
+   > Supabase renamed these: Publishable = the old "anon" key, Secret = the old
+   > "service_role" key. If you only see the old names, the **Legacy API Keys**
+   > tab works too — either set is fine.
 3. **Create the tables:** open **SQL Editor → New query**, open the file
    `supabase/migrations/0001_init.sql` from this project, copy its entire
    contents into the editor, and click **Run**. You should see "Success".
