@@ -14,7 +14,7 @@ export default async function BrandPage({
 
   const { data: brand } = await supabase
     .from("brands")
-    .select("id, name, status, location, meta_ad_account_id")
+    .select("id, name, status, meta_ad_account_id")
     .eq("id", id)
     .maybeSingle();
   if (!brand) notFound();
