@@ -1,6 +1,3 @@
-import "server-only";
-import { getSecret, requireSecret } from "@/lib/secrets";
-
 /**
  * Image generation behind a single interface so the model is swappable per
  * brand / A-B test. Default is Higgsfield Soul (hyper-real, text-free photos)
@@ -17,6 +14,8 @@ export interface GenerateImageParams {
   aspectRatio?: AspectRatio;
   n?: number;
   seed?: number;
+  /** gpt-image-1 render quality. Lower = faster/cheaper. */
+  quality?: "low" | "medium" | "high" | "auto";
 }
 
 export interface GeneratedImage {
@@ -58,6 +57,7 @@ class OpenAIProvider implements ImageProvider {
         prompt: `${p.prompt}\n\nStrictly: ${NO_TEXT}. ${p.negativePrompt ?? ""}`,
         n: p.n ?? 3,
         size: openaiSize(p.aspectRatio),
+        quality: p.quality ?? "medium",
       }),
     });
     if (!res.ok) {
@@ -166,17 +166,10 @@ interface GatewayResponse {
 
 export type ProviderName = "higgsfield_soul" | "openai";
 
-/** Build a provider for an org, reading keys from the encrypted secrets store. */
-export async function getImageProvider(
-  orgId: string,
-  name: ProviderName = "higgsfield_soul",
-): Promise<ImageProvider> {
-  if (name === "openai") {
-    return new OpenAIProvider(await requireSecret(orgId, "openai_api_key"));
-  }
-  const apiKey = await requireSecret(orgId, "image_gateway_api_key");
-  const baseUrl =
-    (await getSecret(orgId, "image_gateway_base_url")) ??
-    "https://api.wavespeed.ai/api/v3";
+/** Construct providers directly from a key (used by scripts and the factory). */
+export function createOpenAIProvider(apiKey: string): ImageProvider {
+  return new OpenAIProvider(apiKey);
+}
+export function createSoulProvider(apiKey: string, baseUrl: string): ImageProvider {
   return new HiggsfieldSoulProvider(apiKey, baseUrl);
 }
