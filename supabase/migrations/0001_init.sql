@@ -321,8 +321,10 @@ create policy profiles_self on profiles
 -- Orgs & memberships: members can read; membership rows are visible to the user.
 create policy orgs_member_read on orgs
   for select using (public.is_org_member(id));
+-- Must NOT reference is_org_member() here: that function reads `memberships`,
+-- so calling it from a `memberships` policy causes infinite RLS recursion.
 create policy memberships_self_read on memberships
-  for select using (user_id = auth.uid() or public.is_org_member(org_id));
+  for select using (user_id = auth.uid());
 
 -- Org-scoped tables: full access to members of the owning org.
 create policy brands_member on brands
