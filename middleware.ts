@@ -4,8 +4,14 @@ import { updateSession } from "@/lib/supabase/middleware";
 const PUBLIC_PATHS = ["/login", "/auth", "/api/health"];
 
 export async function middleware(request: NextRequest) {
-  const { response, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
+
+  // Never process API routes here: they authenticate themselves via
+  // requireContext, and running the session refresh over a multipart upload
+  // body can corrupt the binary. Let API requests pass straight through.
+  if (pathname.startsWith("/api/")) return NextResponse.next();
+
+  const { response, user } = await updateSession(request);
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 

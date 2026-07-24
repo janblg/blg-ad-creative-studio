@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       } catch (e) {
         return NextResponse.json(
           {
-            error: `Couldn't read "${f.name}" (${f.type || "unknown"}). ${
+            error: `[upload-route] Couldn't read "${f.name}" (${f.type || "unknown"}, ${raw.length}b, sig=${raw.subarray(0, 4).toString("hex")}). ${
               e instanceof Error ? e.message : String(e)
             }`,
           },
