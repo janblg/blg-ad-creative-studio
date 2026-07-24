@@ -87,7 +87,14 @@ export async function startBrief(formData: FormData): Promise<BriefResult> {
     for (const f of files) {
       // Normalize to a clean 8-bit sRGB PNG the edit endpoint accepts.
       const raw = Buffer.from(await f.arrayBuffer());
-      const png = await normalizeToPng(raw, 1024);
+      let png: Buffer;
+      try {
+        png = await normalizeToPng(raw, 1024);
+      } catch (e) {
+        return {
+          error: `Couldn't read "${f.name}" (browser type: ${f.type || "unknown"}). ${err(e)}`,
+        };
+      }
       const path = `${orgId}/studio/refs/${crypto.randomUUID()}.png`;
       await upload(path, png, "image/png");
       refPaths.push(path);
