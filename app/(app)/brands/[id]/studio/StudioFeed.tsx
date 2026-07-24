@@ -164,11 +164,13 @@ export function StudioFeed({
     start(async () => {
       try {
         const res = await applyHook({ brandId, imagePath: img.path, hook });
-        if (res.error || !res.overlayUrl) {
+        const url = res.overlayDataUrl ?? res.overlayUrl;
+        if (res.error || !url) {
           push({ kind: "error", text: res.error ?? "Overlay failed." });
           return;
         }
-        push({ kind: "overlay", url: res.overlayUrl });
+        push({ kind: "overlay", url });
+        if (res.diag) push({ kind: "info", text: `Overlay render: ${res.diag}` });
       } catch (e) {
         push({ kind: "error", text: errText(e) });
       }

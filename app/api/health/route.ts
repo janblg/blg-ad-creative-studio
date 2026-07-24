@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const report: Record<string, unknown> = {
     // Bump on deploys we need to confirm are live.
-    version: "2026-07-24-resvg-wasm-overlay",
+    version: "2026-07-24-overlay-diag-dataurl",
   };
 
   const required = [

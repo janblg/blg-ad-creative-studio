@@ -1,4 +1,5 @@
 "use server";
+import sharp from "sharp";
 import { requireContext } from "@/lib/auth";
 import { getSecret } from "@/lib/secrets";
 import { buildMasterPrompt } from "@/lib/prompt-engine/engine";
@@ -183,16 +184,28 @@ export async function applyHook(args: {
   brandId: string;
   imagePath: string;
   hook: string;
-}): Promise<{ error?: string; overlayUrl?: string; overlayPath?: string }> {
-  try {
-    const { orgId } = await requireContext();
-    const key = await anthropicKey(orgId);
-    const photo = await download(args.imagePath);
-    const palette = await brandPalette(args.brandId);
+}): Promise<{
+  error?: string;
+  overlayUrl?: string;
+  overlayDataUrl?: string;
+  overlayPath?: string;
+  diag?: string;
+}> {
+  const { orgId } = await requireContext();
+  const key = await anthropicKey(orgId);
+  const palette = await brandPalette(args.brandId);
+  const canvas = { width: 1080, height: 1350 };
 
-    // Layout on a fixed 1080x1350 canvas (4:5 Meta feed).
-    const canvas = { width: 1080, height: 1350 };
-    const layout = await generateLayout({
+  let photo: Buffer;
+  try {
+    photo = await download(args.imagePath);
+  } catch (e) {
+    return { error: `download step: ${err(e)}` };
+  }
+
+  let layout;
+  try {
+    layout = await generateLayout({
       photoPng: photo,
       hook: args.hook,
       palette,
@@ -200,17 +213,57 @@ export async function applyHook(args: {
       hasLogo: false,
       apiKey: key,
     });
-    const png = await renderCreative({
-      background: photo,
-      style: { fonts: defaultFonts() },
-      layout,
-    });
-    const overlayPath = `${orgId}/studio/creative/${crypto.randomUUID()}.png`;
-    await upload(overlayPath, png, "image/png");
-    return { overlayPath, overlayUrl: await signed(overlayPath) };
   } catch (e) {
-    return { error: err(e) };
+    return { error: `layout step: ${err(e)}` };
   }
+
+  let png: Buffer;
+  try {
+    png = await renderCreative({ background: photo, style: { fonts: defaultFonts() }, layout });
+  } catch (e) {
+    return { error: `render step: ${err(e)}` };
+  }
+
+  // Validate the render output server-side so a bad buffer is a clear error,
+  // not a silent broken <img>.
+  let meta: { width?: number; height?: number } | null = null;
+  try {
+    meta = await sharp(png).metadata();
+  } catch {
+    meta = null;
+  }
+  if (!meta?.width) {
+    return {
+      error: `render produced an invalid image (${png.length}b, sig=${png.subarray(0, 4).toString("hex")})`,
+    };
+  }
+
+  // Serve via a compact data URL (bypasses storage/signed-URL serving) + also
+  // store the full PNG for later export.
+  let dataUrl: string | undefined;
+  try {
+    const preview = await sharp(png).jpeg({ quality: 85 }).toBuffer();
+    dataUrl = `data:image/jpeg;base64,${preview.toString("base64")}`;
+  } catch {
+    /* fall back to signed URL below */
+  }
+
+  const overlayPath = `${orgId}/studio/creative/${crypto.randomUUID()}.png`;
+  try {
+    await upload(overlayPath, png, "image/png");
+  } catch (e) {
+    // If storage fails we can still show the data URL.
+    return dataUrl
+      ? { overlayDataUrl: dataUrl, diag: `${meta.width}x${meta.height}, ${png.length}b (not stored: ${err(e)})` }
+      : { error: `upload step: ${err(e)}` };
+  }
+
+  return {
+    overlayPath,
+    overlayUrl: await signed(overlayPath),
+    overlayDataUrl: dataUrl,
+    diag: `${meta.width}x${meta.height}, ${png.length}b`,
+  };
 }
 
 // ---------------------------------------------------------------------------
