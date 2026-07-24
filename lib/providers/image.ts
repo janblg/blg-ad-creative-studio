@@ -16,6 +16,9 @@ export interface GenerateImageParams {
   seed?: number;
   /** gpt-image-1 render quality. Lower = faster/cheaper. */
   quality?: "low" | "medium" | "high" | "auto";
+  /** Reference/product images. When present, the output is conditioned on
+   * them (image-to-image) so the customer's real product is preserved. */
+  referenceImages?: { buffer: Buffer; mime: string }[];
 }
 
 export interface GeneratedImage {
@@ -46,6 +49,7 @@ class OpenAIProvider implements ImageProvider {
   constructor(private apiKey: string) {}
 
   async generate(p: GenerateImageParams): Promise<GeneratedImage[]> {
+    if (p.referenceImages?.length) return this.edit(p);
     const res = await fetch("https://api.openai.com/v1/images/generations", {
       method: "POST",
       headers: {
@@ -62,6 +66,36 @@ class OpenAIProvider implements ImageProvider {
     });
     if (!res.ok) {
       throw new Error(`OpenAI images ${res.status}: ${await res.text()}`);
+    }
+    const json = (await res.json()) as { data: { b64_json: string }[] };
+    return json.data.map((d) => ({
+      buffer: Buffer.from(d.b64_json, "base64"),
+      mime: "image/png",
+    }));
+  }
+
+  /** Image-to-image via /images/edits so the reference product is preserved. */
+  private async edit(p: GenerateImageParams): Promise<GeneratedImage[]> {
+    const form = new FormData();
+    form.append("model", "gpt-image-1");
+    form.append("prompt", `${p.prompt}\n\nStrictly: ${NO_TEXT}. ${p.negativePrompt ?? ""}`);
+    form.append("n", String(p.n ?? 1));
+    form.append("size", openaiSize(p.aspectRatio));
+    form.append("quality", p.quality ?? "medium");
+    for (const ref of p.referenceImages ?? []) {
+      form.append(
+        "image[]",
+        new Blob([new Uint8Array(ref.buffer)], { type: ref.mime || "image/png" }),
+        "reference.png",
+      );
+    }
+    const res = await fetch("https://api.openai.com/v1/images/edits", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.apiKey}` },
+      body: form,
+    });
+    if (!res.ok) {
+      throw new Error(`OpenAI edits ${res.status}: ${await res.text()}`);
     }
     const json = (await res.json()) as { data: { b64_json: string }[] };
     return json.data.map((d) => ({
