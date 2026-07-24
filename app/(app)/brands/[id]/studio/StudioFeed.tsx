@@ -69,14 +69,26 @@ export function StudioFeed({
     const text = brief.trim();
     const sending = files;
     push({ kind: "user", text, thumbs: previews });
-    push({ kind: "status", text: "Prompt engine is engineering your shot…" });
-    const fd = new FormData();
-    fd.set("brief", text);
-    sending.forEach((f) => fd.append("images", f));
+    push({ kind: "status", text: sending.length ? "Uploading product photo(s)…" : "Prompt engine is engineering your shot…" });
     setBrief("");
     start(async () => {
       try {
-        const res = await startBrief(fd);
+        // 1) Binary-safe upload via route handler (not the server action).
+        let uploadedPaths: string[] = [];
+        if (sending.length) {
+          const fd = new FormData();
+          sending.forEach((f) => fd.append("images", f));
+          const up = await fetch("/api/upload", { method: "POST", body: fd });
+          const uj = await up.json();
+          if (!up.ok) {
+            push({ kind: "error", text: uj.error ?? "Upload failed." });
+            return;
+          }
+          uploadedPaths = (uj.refs ?? []).map((r: { path: string }) => r.path);
+          push({ kind: "status", text: "Prompt engine is engineering your shot…" });
+        }
+        // 2) Engine step (JSON args only).
+        const res = await startBrief({ brief: text, refPaths: uploadedPaths });
         if (res.error || !res.masterPrompt) {
           push({ kind: "error", text: res.error ?? "Engine returned nothing." });
           return;

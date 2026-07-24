@@ -65,41 +65,28 @@ async function brandPalette(brandId: string): Promise<BrandColor[]> {
 export interface BriefResult {
   error?: string;
   refPaths?: string[];
-  refUrls?: string[];
   visualSystem?: string;
   masterPrompt?: string;
 }
 
-export async function startBrief(formData: FormData): Promise<BriefResult> {
+export async function startBrief(args: {
+  brief: string;
+  refPaths: string[];
+}): Promise<BriefResult> {
   try {
-    const brief = String(formData.get("brief") ?? "").trim();
+    const brief = args.brief.trim();
     if (!brief) return { error: "Describe the image you need." };
     const { orgId } = await requireContext();
     const key = await anthropicKey(orgId);
 
-    const files = formData
-      .getAll("images")
-      .filter((f): f is File => f instanceof File && f.size > 0)
-      .slice(0, 4);
-
-    const refPaths: string[] = [];
-    const refB64: { b64: string; mime: string }[] = [];
-    for (const f of files) {
-      // Normalize to a clean 8-bit sRGB PNG the edit endpoint accepts.
-      const raw = Buffer.from(await f.arrayBuffer());
-      let png: Buffer;
-      try {
-        png = await normalizeToPng(raw, 1024);
-      } catch (e) {
-        return {
-          error: `Couldn't read "${f.name}" (browser type: ${f.type || "unknown"}). ${err(e)}`,
-        };
-      }
-      const path = `${orgId}/studio/refs/${crypto.randomUUID()}.png`;
-      await upload(path, png, "image/png");
-      refPaths.push(path);
-      refB64.push({ b64: png.toString("base64"), mime: "image/png" });
-    }
+    // Reference photos are already normalized + stored by /api/upload; read
+    // them back for the engine's vision pass.
+    const refB64 = await Promise.all(
+      args.refPaths.map(async (p) => ({
+        b64: (await download(p)).toString("base64"),
+        mime: "image/png",
+      })),
+    );
 
     const engine = await buildMasterPrompt({
       brief,
@@ -108,8 +95,7 @@ export async function startBrief(formData: FormData): Promise<BriefResult> {
     });
 
     return {
-      refPaths,
-      refUrls: await Promise.all(refPaths.map(signed)),
+      refPaths: args.refPaths,
       visualSystem: engine.visualSystem,
       masterPrompt: engine.masterPrompt,
     };
