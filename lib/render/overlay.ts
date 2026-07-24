@@ -9,9 +9,24 @@
  * server). resvg rasterizes that SVG to a transparent PNG. Sharp covers the
  * canvas with the photo and composites the text layer on top.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import satori from "satori";
-import { Resvg } from "@resvg/resvg-js";
+import { Resvg, initWasm } from "@resvg/resvg-wasm";
 import sharp from "sharp";
+
+// resvg-wasm renders Satori's SVG correctly (same engine as resvg-js) and runs
+// reliably on Vercel (pure WebAssembly, no native binary). Init once.
+let resvgInit: Promise<void> | undefined;
+function ensureResvg(): Promise<void> {
+  if (!resvgInit) {
+    const wasm = readFileSync(
+      path.join(process.cwd(), "node_modules/@resvg/resvg-wasm/index_bg.wasm"),
+    );
+    resvgInit = initWasm(wasm);
+  }
+  return resvgInit;
+}
 import type {
   Anchor,
   BrandStyle,
@@ -233,6 +248,7 @@ export async function renderTextLayer(opts: RenderOptions): Promise<Buffer> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const svg = await satori(root as any, { width, height, fonts: fonts as any });
 
+  await ensureResvg();
   const resvg = new Resvg(svg, {
     fitTo: { mode: "width", value: width },
     background: "rgba(0,0,0,0)",
