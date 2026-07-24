@@ -1,104 +1,232 @@
 "use server";
+import sharp from "sharp";
 import { requireContext } from "@/lib/auth";
 import { getSecret } from "@/lib/secrets";
 import { buildMasterPrompt } from "@/lib/prompt-engine/engine";
 import { getImageProvider } from "@/lib/providers/image-factory";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { generateHooks, generateAdCopy, type AdCopy } from "@/lib/ai/creative";
+import { generateLayout, type BrandColor } from "@/lib/render/vision";
+import { renderCreative } from "@/lib/render/overlay";
+import { defaultFonts } from "@/lib/render/fonts";
 
-export interface GenState {
-  error?: string;
-  brief?: string;
-  visualSystem?: string;
-  masterPrompt?: string;
-  imageUrl?: string;
-  usedReference?: boolean;
+const err = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const BUCKET = "assets";
+
+async function anthropicKey(orgId: string): Promise<string> {
+  const key = await getSecret(orgId, "anthropic_api_key");
+  if (!key) throw new Error("No Anthropic key configured (ANTHROPIC_API_KEY).");
+  return key;
 }
 
-const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+async function signed(path: string): Promise<string> {
+  const admin = supabaseAdmin();
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUrl(path, 3600);
+  if (error || !data) throw new Error(`Could not sign ${path}: ${error?.message}`);
+  return data.signedUrl;
+}
 
-export async function generate(
-  _prev: GenState,
-  formData: FormData,
-): Promise<GenState> {
-  const brief = String(formData.get("brief") ?? "").trim();
-  if (!brief) return { error: "Enter a description of the image you need." };
+async function upload(path: string, buf: Buffer, contentType: string) {
+  const admin = supabaseAdmin();
+  const { error } = await admin.storage
+    .from(BUCKET)
+    .upload(path, buf, { contentType, upsert: true });
+  if (error) throw new Error(`Upload failed: ${error.message}`);
+}
 
-  const { orgId } = await requireContext();
-  const anthropic = await getSecret(orgId, "anthropic_api_key");
-  if (!anthropic) {
-    return { error: "No Anthropic key configured. Set ANTHROPIC_API_KEY in the environment.", brief };
-  }
+async function download(path: string): Promise<Buffer> {
+  const admin = supabaseAdmin();
+  const { data, error } = await admin.storage.from(BUCKET).download(path);
+  if (error || !data) throw new Error(`Download failed: ${error?.message}`);
+  return Buffer.from(await data.arrayBuffer());
+}
 
-  // Collect uploaded reference product images (max 4).
-  const files = formData
-    .getAll("images")
-    .filter((f): f is File => f instanceof File && f.size > 0)
-    .slice(0, 4);
-  const refB64: { b64: string; mime: string }[] = [];
-  const refBufs: { buffer: Buffer; mime: string }[] = [];
-  for (const f of files) {
-    const buf = Buffer.from(await f.arrayBuffer());
-    const mime = f.type || "image/png";
-    refBufs.push({ buffer: buf, mime });
-    refB64.push({ b64: buf.toString("base64"), mime });
-  }
-  const usedReference = refB64.length > 0;
+/** Brand palette from profile, with a solid default. */
+async function brandPalette(brandId: string): Promise<BrandColor[]> {
+  const admin = supabaseAdmin();
+  const { data } = await admin
+    .from("brand_profiles")
+    .select("colors")
+    .eq("brand_id", brandId)
+    .maybeSingle();
+  const colors = (data?.colors ?? []) as { hex?: string; role?: string }[];
+  const valid = colors.filter((c) => /^#[0-9a-fA-F]{6}$/.test(c.hex ?? ""));
+  if (valid.length >= 2) return valid.map((c) => ({ hex: c.hex!, role: c.role }));
+  return [
+    { hex: "#FFFFFF", role: "text" },
+    { hex: "#FFD23F", role: "accent" },
+    { hex: "#111111", role: "dark" },
+  ];
+}
 
-  let engine;
+// ---------------------------------------------------------------------------
+// Step 1: brief + product photos -> engine (visual system + master prompt)
+// ---------------------------------------------------------------------------
+export interface BriefResult {
+  error?: string;
+  refPaths?: string[];
+  refUrls?: string[];
+  visualSystem?: string;
+  masterPrompt?: string;
+}
+
+export async function startBrief(formData: FormData): Promise<BriefResult> {
   try {
-    engine = await buildMasterPrompt({
+    const brief = String(formData.get("brief") ?? "").trim();
+    if (!brief) return { error: "Describe the image you need." };
+    const { orgId } = await requireContext();
+    const key = await anthropicKey(orgId);
+
+    const files = formData
+      .getAll("images")
+      .filter((f): f is File => f instanceof File && f.size > 0)
+      .slice(0, 4);
+
+    const refPaths: string[] = [];
+    const refB64: { b64: string; mime: string }[] = [];
+    for (const f of files) {
+      // Normalize to a reasonably-sized PNG for storage + APIs.
+      const raw = Buffer.from(await f.arrayBuffer());
+      const png = await sharp(raw)
+        .resize(1536, 1536, { fit: "inside", withoutEnlargement: true })
+        .png()
+        .toBuffer();
+      const path = `${orgId}/studio/refs/${crypto.randomUUID()}.png`;
+      await upload(path, png, "image/png");
+      refPaths.push(path);
+      refB64.push({ b64: png.toString("base64"), mime: "image/png" });
+    }
+
+    const engine = await buildMasterPrompt({
       brief,
-      apiKey: anthropic,
-      referenceImages: usedReference ? refB64 : undefined,
+      apiKey: key,
+      referenceImages: refB64.length ? refB64 : undefined,
     });
-  } catch (e) {
-    return { error: `Prompt engine failed: ${msg(e)}`, brief };
-  }
 
-  let outBuf: Buffer;
+    return {
+      refPaths,
+      refUrls: await Promise.all(refPaths.map(signed)),
+      visualSystem: engine.visualSystem,
+      masterPrompt: engine.masterPrompt,
+    };
+  } catch (e) {
+    return { error: err(e) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Step 2: approved (possibly edited) master prompt -> image
+// ---------------------------------------------------------------------------
+export interface ImageResult {
+  error?: string;
+  imagePath?: string;
+  imageUrl?: string;
+}
+
+export async function approveAndGenerate(args: {
+  masterPrompt: string;
+  refPaths: string[];
+}): Promise<ImageResult> {
   try {
+    const { orgId } = await requireContext();
+    const refs = await Promise.all(
+      args.refPaths.map(async (p) => ({ buffer: await download(p), mime: "image/png" })),
+    );
     const provider = await getImageProvider(orgId, "openai");
     const [img] = await provider.generate({
-      prompt: engine.masterPrompt,
+      prompt: args.masterPrompt,
       n: 1,
       quality: "medium",
       aspectRatio: "4:5",
-      referenceImages: usedReference ? refBufs : undefined,
+      referenceImages: refs.length ? refs : undefined,
     });
-    outBuf = img.buffer;
+    const imagePath = `${orgId}/studio/gen/${crypto.randomUUID()}.png`;
+    await upload(imagePath, img.buffer, "image/png");
+    return { imagePath, imageUrl: await signed(imagePath) };
   } catch (e) {
-    return {
-      error: `Image generation failed: ${msg(e)}`,
-      brief,
-      visualSystem: engine.visualSystem,
-      masterPrompt: engine.masterPrompt,
-      usedReference,
-    };
+    return { error: err(e) };
   }
+}
 
-  // Store the result and hand back a signed URL to display.
+// ---------------------------------------------------------------------------
+// Step 3: hooks
+// ---------------------------------------------------------------------------
+export async function makeHooks(args: {
+  brandId: string;
+  brandName: string;
+  brief: string;
+}): Promise<{ error?: string; hooks?: string[] }> {
   try {
-    const admin = supabaseAdmin();
-    const path = `${orgId}/studio/${crypto.randomUUID()}.png`;
-    const up = await admin.storage
-      .from("assets")
-      .upload(path, outBuf, { contentType: "image/png", upsert: false });
-    if (up.error) throw up.error;
-    const signed = await admin.storage.from("assets").createSignedUrl(path, 3600);
-    return {
-      brief,
-      visualSystem: engine.visualSystem,
-      masterPrompt: engine.masterPrompt,
-      imageUrl: signed.data?.signedUrl,
-      usedReference,
-    };
+    const { orgId } = await requireContext();
+    const key = await anthropicKey(orgId);
+    const hooks = await generateHooks({
+      apiKey: key,
+      brandName: args.brandName,
+      brief: args.brief,
+      count: 5,
+    });
+    return { hooks };
   } catch (e) {
-    return {
-      error: `Saving image failed: ${msg(e)}`,
-      brief,
-      visualSystem: engine.visualSystem,
-      masterPrompt: engine.masterPrompt,
-      usedReference,
-    };
+    return { error: err(e) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Step 4: overlay the chosen hook onto the image (Claude vision layout)
+// ---------------------------------------------------------------------------
+export async function applyHook(args: {
+  brandId: string;
+  imagePath: string;
+  hook: string;
+}): Promise<{ error?: string; overlayUrl?: string; overlayPath?: string }> {
+  try {
+    const { orgId } = await requireContext();
+    const key = await anthropicKey(orgId);
+    const photo = await download(args.imagePath);
+    const palette = await brandPalette(args.brandId);
+
+    // Layout on a fixed 1080x1350 canvas (4:5 Meta feed).
+    const canvas = { width: 1080, height: 1350 };
+    const layout = await generateLayout({
+      photoPng: photo,
+      hook: args.hook,
+      palette,
+      canvas,
+      hasLogo: false,
+      apiKey: key,
+    });
+    const png = await renderCreative({
+      background: photo,
+      style: { fonts: defaultFonts() },
+      layout,
+    });
+    const overlayPath = `${orgId}/studio/creative/${crypto.randomUUID()}.png`;
+    await upload(overlayPath, png, "image/png");
+    return { overlayPath, overlayUrl: await signed(overlayPath) };
+  } catch (e) {
+    return { error: err(e) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Step 5: Meta ad copy
+// ---------------------------------------------------------------------------
+export async function makeCopy(args: {
+  brandName: string;
+  brief: string;
+  hook: string;
+}): Promise<{ error?: string; copy?: AdCopy }> {
+  try {
+    const { orgId } = await requireContext();
+    const key = await anthropicKey(orgId);
+    const copy = await generateAdCopy({
+      apiKey: key,
+      brandName: args.brandName,
+      brief: args.brief,
+      hook: args.hook,
+    });
+    return { copy };
+  } catch (e) {
+    return { error: err(e) };
   }
 }
