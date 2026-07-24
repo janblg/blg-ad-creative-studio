@@ -33,6 +33,22 @@ async function sharpNormalize(buf: Buffer, max: number, lenient = false): Promis
     .toBuffer();
 }
 
+/**
+ * Small JPEG base64 for LLM vision calls — keeps the payload well under
+ * Anthropic's ~5MB/image limit (a lossless photo PNG easily exceeds it).
+ * Input is expected to already be a decodable image (e.g. our stored PNG).
+ */
+export async function toVisionJpegBase64(input: Buffer, max = 1024): Promise<string> {
+  const jpeg = await sharp(input)
+    .rotate()
+    .flatten({ background: "#ffffff" })
+    .resize(max, max, { fit: "inside", withoutEnlargement: true })
+    .toColourspace("srgb")
+    .jpeg({ quality: 82 })
+    .toBuffer();
+  return jpeg.toString("base64");
+}
+
 export async function normalizeToPng(input: Buffer, max = 1024): Promise<Buffer> {
   const heic = isHeic(input);
   const errors: string[] = [];

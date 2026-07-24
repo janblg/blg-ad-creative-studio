@@ -3,9 +3,12 @@ import { ENGINE_DOC_B64 } from "./engine-doc";
 
 /**
  * The Hyperrealism Prompt Engine. Claude is loaded with the full engine
- * document as its system prompt, takes a user's minimal brief, and returns a
- * resolved "visual system" + the final "master prompt" that gets sent to the
- * image generator. This is the trained brain between the user and gpt-image-1.
+ * document as its system prompt, takes a user's minimal brief (+ optional
+ * product photos), and returns a resolved "visual system" + the final "master
+ * prompt" sent to the image generator.
+ *
+ * Uses plain-text output (not forced tool JSON): with a ~51k-char system
+ * prompt, forced tool calls sometimes come back empty; prose is reliable.
  */
 const ENGINE_DOC = Buffer.from(ENGINE_DOC_B64, "base64").toString("utf8");
 const MODEL = "claude-sonnet-5";
@@ -15,26 +18,15 @@ export interface MasterPromptResult {
   masterPrompt: string;
 }
 
-const TOOL = {
-  name: "emit_prompt",
-  description: "Return the engineered visual system and the final master prompt.",
-  input_schema: {
-    type: "object",
-    required: ["visualSystem", "masterPrompt"],
-    properties: {
-      visualSystem: {
-        type: "string",
-        description:
-          "Concise resolution of the eight realism variables (capture system, optical behavior, light physics, subject behavior, spatial evidence, material truth, color science, imperfection budget). A few short lines.",
-      },
-      masterPrompt: {
-        type: "string",
-        description:
-          "The final prompt to send to the image generator, assembled in the section-12 order and tuned for the target engine.",
-      },
-    },
-  },
-} as const;
+function parse(text: string): MasterPromptResult {
+  const mp = text.search(/MASTER\s*PROMPT\s*:/i);
+  if (mp === -1) return { visualSystem: "", masterPrompt: text.trim() };
+  const masterPrompt = text.slice(mp).replace(/MASTER\s*PROMPT\s*:/i, "").trim();
+  const before = text.slice(0, mp);
+  const vs = before.search(/VISUAL\s*SYSTEM\s*:/i);
+  const visualSystem = (vs === -1 ? before : before.slice(vs).replace(/VISUAL\s*SYSTEM\s*:/i, "")).trim();
+  return { visualSystem, masterPrompt };
+}
 
 export async function buildMasterPrompt(opts: {
   brief: string;
@@ -42,8 +34,7 @@ export async function buildMasterPrompt(opts: {
   aspect?: string;
   model?: string;
   brandContext?: string;
-  /** Customer's real product photos, base64. The engine describes them
-   * faithfully so the generated scene features the actual product. */
+  /** Customer's real product photos, base64 (JPEG recommended, kept small). */
   referenceImages?: { b64: string; mime: string }[];
 }): Promise<MasterPromptResult> {
   const client = new Anthropic({ apiKey: opts.apiKey });
@@ -51,13 +42,20 @@ export async function buildMasterPrompt(opts: {
   const system = `${ENGINE_DOC}
 
 ---
-OPERATING INSTRUCTION: You ARE the Hyperrealism Prompt Engine defined above. The user provides a minimal brief (Subject + core action/state + key context + desired emotion, per §21). Apply the entire document and return exactly ONE result via the emit_prompt tool.
+OPERATING INSTRUCTION: You ARE the Hyperrealism Prompt Engine defined above. The user provides a minimal brief (Subject + core action/state + key context + desired emotion, per §21). Apply the entire document.
 
-Target image generator: OpenAI gpt-image-1 — strictly obey §14.3: natural declarative prose of roughly 80–200 words, and convert EVERY exclusion into a positive statement (never use "no/not"; e.g. instead of "no text" write "all surfaces blank and unmarked"). Target aspect ratio ${opts.aspect ?? "4:5"}. Keep all surfaces free of readable text, logos, and watermarks by stating them blank. ${opts.brandContext ? `Brand art direction to honor: ${opts.brandContext}` : ""}${
+Target image generator: OpenAI gpt-image-1 — strictly obey §14.3: natural declarative prose of roughly 80–200 words, and convert EVERY exclusion into a positive statement (never "no/not"; e.g. instead of "no text" write "all surfaces blank and unmarked"). Target aspect ratio ${opts.aspect ?? "4:5"}. Keep all surfaces free of readable text, logos, and watermarks by stating them blank. ${opts.brandContext ? `Brand art direction to honor: ${opts.brandContext}` : ""}${
     opts.referenceImages?.length
-      ? `\n\nREFERENCE PRODUCT: The attached image(s) show the customer's ACTUAL product. The generated scene MUST feature this exact product. In the master prompt, describe its true form, proportions, colors, and materials precisely so it is preserved faithfully — do not substitute a generic or different item. The same reference image is also passed to the image generator to lock the product.`
+      ? `\n\nREFERENCE PRODUCT: The attached image(s) show the customer's ACTUAL product. The generated scene MUST feature this exact product. Describe its true form, proportions, colors, and materials precisely so it is preserved faithfully — do not substitute a different item. The same reference is also passed to the image generator to lock the product.`
       : ""
-  }`;
+  }
+
+Respond in EXACTLY this plain-text format and nothing else:
+VISUAL SYSTEM:
+<3–5 short lines resolving the eight realism variables>
+
+MASTER PROMPT:
+<the final 80–200 word prose prompt>`;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const content: any[] = [];
@@ -72,27 +70,20 @@ Target image generator: OpenAI gpt-image-1 — strictly obey §14.3: natural dec
   const attempt = async (): Promise<MasterPromptResult> => {
     const msg = await client.messages.create({
       model: opts.model ?? MODEL,
-      max_tokens: 4000,
+      max_tokens: 2000,
       system,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools: [TOOL as any],
-      tool_choice: { type: "tool", name: "emit_prompt" },
       messages: [{ role: "user", content }],
     });
-    const tool = msg.content.find((b) => b.type === "tool_use");
-    if (!tool || tool.type !== "tool_use") {
-      throw new Error(`Prompt engine returned no tool call (stop_reason=${msg.stop_reason}).`);
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const input = tool.input as any;
-    return {
-      visualSystem: String(input.visualSystem ?? "").trim(),
-      masterPrompt: String(input.masterPrompt ?? "").trim(),
-    };
+    const text = msg.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+    return parse(text);
   };
 
   let res = await attempt();
-  if (!res.masterPrompt) res = await attempt(); // one retry on empty
+  if (!res.masterPrompt) res = await attempt();
   if (!res.masterPrompt) {
     throw new Error("Prompt engine produced an empty master prompt. Try again or simplify the brief.");
   }

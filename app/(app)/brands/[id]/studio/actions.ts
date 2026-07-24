@@ -1,5 +1,5 @@
 "use server";
-import { normalizeToPng } from "@/lib/images/normalize";
+import { normalizeToPng, toVisionJpegBase64 } from "@/lib/images/normalize";
 import { requireContext } from "@/lib/auth";
 import { getSecret } from "@/lib/secrets";
 import { buildMasterPrompt } from "@/lib/prompt-engine/engine";
@@ -80,11 +80,12 @@ export async function startBrief(args: {
     const key = await anthropicKey(orgId);
 
     // Reference photos are already normalized + stored by /api/upload; read
-    // them back for the engine's vision pass.
+    // them back as SMALL JPEGs for the engine's vision pass (Anthropic rejects
+    // oversized images with "Could not process image").
     const refB64 = await Promise.all(
       args.refPaths.map(async (p) => ({
-        b64: (await download(p)).toString("base64"),
-        mime: "image/png",
+        b64: await toVisionJpegBase64(await download(p), 1024),
+        mime: "image/jpeg",
       })),
     );
 
