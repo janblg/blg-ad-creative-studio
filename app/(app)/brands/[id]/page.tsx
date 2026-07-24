@@ -35,6 +35,12 @@ export default async function BrandPage({
         </Link>
         <h1 className="text-xl font-semibold mt-2">{brand.name}</h1>
         <p className="text-sm text-neutral-500 capitalize">{brand.status}</p>
+        <Link
+          href={`/brands/${brand.id}/studio`}
+          className="inline-block mt-3 rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-800 dark:bg-white dark:text-neutral-900"
+        >
+          Open Image Studio →
+        </Link>
       </div>
 
       <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-6">
