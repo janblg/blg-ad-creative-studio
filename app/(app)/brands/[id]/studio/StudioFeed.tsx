@@ -17,6 +17,7 @@ type FeedItem =
   | { kind: "overlay"; url: string }
   | { kind: "copy"; copy: AdCopy }
   | { kind: "status"; text: string }
+  | { kind: "info"; text: string }
   | { kind: "error"; text: string };
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -109,6 +110,7 @@ export function StudioFeed({
           return;
         }
         push({ kind: "image", url: res.imageUrl, path: res.imagePath });
+        if (res.note) push({ kind: "info", text: res.note });
       } catch (e) {
         push({ kind: "error", text: errText(e) });
       }
@@ -321,6 +323,12 @@ export function StudioFeed({
                 return (
                   <div key={i} className="flex items-center gap-2 text-sm text-neutral-500 px-2">
                     <span className="h-2 w-2 rounded-full bg-neutral-400 animate-pulse" />
+                    {item.text}
+                  </div>
+                );
+              case "info":
+                return (
+                  <div key={i} className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 whitespace-pre-wrap">
                     {item.text}
                   </div>
                 );

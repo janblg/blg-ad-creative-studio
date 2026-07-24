@@ -1,5 +1,5 @@
 "use server";
-import sharp from "sharp";
+import { normalizeToPng } from "@/lib/images/normalize";
 import { requireContext } from "@/lib/auth";
 import { getSecret } from "@/lib/secrets";
 import { buildMasterPrompt } from "@/lib/prompt-engine/engine";
@@ -85,12 +85,9 @@ export async function startBrief(formData: FormData): Promise<BriefResult> {
     const refPaths: string[] = [];
     const refB64: { b64: string; mime: string }[] = [];
     for (const f of files) {
-      // Normalize to a reasonably-sized PNG for storage + APIs.
+      // Normalize to a clean 8-bit sRGB PNG the edit endpoint accepts.
       const raw = Buffer.from(await f.arrayBuffer());
-      const png = await sharp(raw)
-        .resize(1536, 1536, { fit: "inside", withoutEnlargement: true })
-        .png()
-        .toBuffer();
+      const png = await normalizeToPng(raw, 1024);
       const path = `${orgId}/studio/refs/${crypto.randomUUID()}.png`;
       await upload(path, png, "image/png");
       refPaths.push(path);
@@ -121,6 +118,7 @@ export interface ImageResult {
   error?: string;
   imagePath?: string;
   imageUrl?: string;
+  note?: string;
 }
 
 export async function approveAndGenerate(args: {
@@ -129,20 +127,42 @@ export async function approveAndGenerate(args: {
 }): Promise<ImageResult> {
   try {
     const { orgId } = await requireContext();
+    // Re-normalize refs at generation time so the edit endpoint always gets a
+    // clean 8-bit sRGB PNG regardless of what was stored.
     const refs = await Promise.all(
-      args.refPaths.map(async (p) => ({ buffer: await download(p), mime: "image/png" })),
+      args.refPaths.map(async (p) => ({
+        buffer: await normalizeToPng(await download(p), 1024),
+        mime: "image/png",
+      })),
     );
     const provider = await getImageProvider(orgId, "openai");
-    const [img] = await provider.generate({
-      prompt: args.masterPrompt,
-      n: 1,
-      quality: "medium",
-      aspectRatio: "4:5",
-      referenceImages: refs.length ? refs : undefined,
-    });
+    const base = { prompt: args.masterPrompt, n: 1, quality: "medium" as const, aspectRatio: "4:5" as const };
+
+    let outBuf: Buffer;
+    let note: string | undefined;
+    try {
+      const [img] = await provider.generate({
+        ...base,
+        referenceImages: refs.length ? refs : undefined,
+      });
+      outBuf = img.buffer;
+    } catch (e) {
+      const m = err(e);
+      // If the reference is rejected, still deliver an image from the engine's
+      // description (it already described the real product from the photo).
+      if (refs.length && /invalid_image|image file or mode/i.test(m)) {
+        const [img] = await provider.generate(base);
+        outBuf = img.buffer;
+        note =
+          "The generator couldn't use the uploaded photo directly, so this was created from the engine's written description of it. For exact product fidelity, try a clean, well-lit product photo.";
+      } else {
+        throw e;
+      }
+    }
+
     const imagePath = `${orgId}/studio/gen/${crypto.randomUUID()}.png`;
-    await upload(imagePath, img.buffer, "image/png");
-    return { imagePath, imageUrl: await signed(imagePath) };
+    await upload(imagePath, outBuf, "image/png");
+    return { imagePath, imageUrl: await signed(imagePath), note };
   } catch (e) {
     return { error: err(e) };
   }
