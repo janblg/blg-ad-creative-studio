@@ -1,5 +1,5 @@
 "use server";
-import { normalizeToPng, toVisionJpegBase64 } from "@/lib/images/normalize";
+import { normalizeToPng } from "@/lib/images/normalize";
 import { requireContext } from "@/lib/auth";
 import { getSecret } from "@/lib/secrets";
 import { buildMasterPrompt } from "@/lib/prompt-engine/engine";
@@ -71,7 +71,7 @@ export interface BriefResult {
 
 export async function startBrief(args: {
   brief: string;
-  refPaths: string[];
+  refs: { path: string; visionB64: string }[];
 }): Promise<BriefResult> {
   try {
     const brief = args.brief.trim();
@@ -79,15 +79,9 @@ export async function startBrief(args: {
     const { orgId } = await requireContext();
     const key = await anthropicKey(orgId);
 
-    // Reference photos are already normalized + stored by /api/upload; read
-    // them back as SMALL JPEGs for the engine's vision pass (Anthropic rejects
-    // oversized images with "Could not process image").
-    const refB64 = await Promise.all(
-      args.refPaths.map(async (p) => ({
-        b64: await toVisionJpegBase64(await download(p), 1024),
-        mime: "image/jpeg",
-      })),
-    );
+    // The small vision JPEGs were produced by /api/upload from the in-memory
+    // decoded image — no re-download / re-decode here.
+    const refB64 = args.refs.map((r) => ({ b64: r.visionB64, mime: "image/jpeg" }));
 
     const engine = await buildMasterPrompt({
       brief,
@@ -96,7 +90,7 @@ export async function startBrief(args: {
     });
 
     return {
-      refPaths: args.refPaths,
+      refPaths: args.refs.map((r) => r.path),
       visualSystem: engine.visualSystem,
       masterPrompt: engine.masterPrompt,
     };

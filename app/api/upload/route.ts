@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireContext } from "@/lib/auth";
-import { normalizeToPng } from "@/lib/images/normalize";
+import { normalizeToPng, toVisionJpegBase64 } from "@/lib/images/normalize";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -22,12 +22,16 @@ export async function POST(req: Request) {
       .slice(0, 4);
 
     const admin = supabaseAdmin();
-    const refs: { path: string; url: string | undefined }[] = [];
+    const refs: { path: string; url: string | undefined; visionB64: string }[] = [];
     for (const f of files) {
       const raw = Buffer.from(await f.arrayBuffer());
       let png: Buffer;
+      let visionB64: string;
       try {
         png = await normalizeToPng(raw, 1024);
+        // Produce the small vision JPEG here, from the just-decoded in-memory
+        // image — no storage round-trip / second decode later.
+        visionB64 = await toVisionJpegBase64(png, 1024);
       } catch (e) {
         return NextResponse.json(
           {
@@ -46,7 +50,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: up.error.message }, { status: 500 });
       }
       const signed = await admin.storage.from("assets").createSignedUrl(path, 3600);
-      refs.push({ path, url: signed.data?.signedUrl });
+      refs.push({ path, url: signed.data?.signedUrl, visionB64 });
     }
     return NextResponse.json({ refs });
   } catch (e) {

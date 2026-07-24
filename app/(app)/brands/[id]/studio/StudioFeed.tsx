@@ -74,7 +74,7 @@ export function StudioFeed({
     start(async () => {
       try {
         // 1) Binary-safe upload via route handler (not the server action).
-        let uploadedPaths: string[] = [];
+        let uploadedRefs: { path: string; visionB64: string }[] = [];
         if (sending.length) {
           const fd = new FormData();
           sending.forEach((f) => fd.append("images", f));
@@ -84,11 +84,14 @@ export function StudioFeed({
             push({ kind: "error", text: uj.error ?? "Upload failed." });
             return;
           }
-          uploadedPaths = (uj.refs ?? []).map((r: { path: string }) => r.path);
+          uploadedRefs = (uj.refs ?? []).map((r: { path: string; visionB64: string }) => ({
+            path: r.path,
+            visionB64: r.visionB64,
+          }));
           push({ kind: "status", text: "Prompt engine is engineering your shot…" });
         }
         // 2) Engine step (JSON args only).
-        const res = await startBrief({ brief: text, refPaths: uploadedPaths });
+        const res = await startBrief({ brief: text, refs: uploadedRefs });
         if (res.error || !res.masterPrompt) {
           push({ kind: "error", text: res.error ?? "Engine returned nothing." });
           return;
