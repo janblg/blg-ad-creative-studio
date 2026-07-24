@@ -59,12 +59,11 @@ export default async function BrandPage({
           ))}
         </ol>
         <p className="mt-6 text-sm text-neutral-500">
-          The interactive workflow is being built next. First, add your API keys
-          in{" "}
-          <Link href="/settings" className="underline">
-            Settings
+          The full step-by-step workflow is being built next. For now, try{" "}
+          <Link href={`/brands/${brand.id}/studio`} className="underline">
+            Image Studio
           </Link>{" "}
-          so generation is ready to go.
+          to generate images from a prompt.
         </p>
       </div>
     </div>

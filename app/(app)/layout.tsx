@@ -21,9 +21,6 @@ export default async function AppLayout({
               <Link href="/" className="hover:text-neutral-900 dark:hover:text-white">
                 Brands
               </Link>
-              <Link href="/settings" className="hover:text-neutral-900 dark:hover:text-white">
-                Settings
-              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm">
