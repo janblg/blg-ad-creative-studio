@@ -33,7 +33,7 @@ export function StudioFeed({
   const [brief, setBrief] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
-  const [refPaths, setRefPaths] = useState<string[]>([]);
+  const [refs, setRefs] = useState<{ path: string; visionB64: string }[]>([]);
   const [master, setMaster] = useState("");
   const [dragging, setDragging] = useState(false);
   const [pending, start] = useTransition();
@@ -96,7 +96,7 @@ export function StudioFeed({
           push({ kind: "error", text: res.error ?? "Engine returned nothing." });
           return;
         }
-        setRefPaths(res.refPaths ?? []);
+        setRefs(uploadedRefs);
         setMaster(res.masterPrompt);
         push({
           kind: "engine",
@@ -119,7 +119,10 @@ export function StudioFeed({
     push({ kind: "status", text: "Generating the image (~30s)…" });
     start(async () => {
       try {
-        const res = await approveAndGenerate({ masterPrompt: master, refPaths });
+        const res = await approveAndGenerate({
+          masterPrompt: master,
+          refB64: refs.map((r) => r.visionB64),
+        });
         if (res.error || !res.imageUrl || !res.imagePath) {
           push({ kind: "error", text: res.error ?? "Generation failed." });
           return;

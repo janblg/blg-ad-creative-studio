@@ -8,7 +8,10 @@ export const dynamic = "force-dynamic";
  * status. Public so it works even when auth/session is misconfigured.
  */
 export async function GET() {
-  const report: Record<string, unknown> = {};
+  const report: Record<string, unknown> = {
+    // Bump on deploys we need to confirm are live.
+    version: "2026-07-24-decode-once-jpeg-pipeline",
+  };
 
   const required = [
     "NEXT_PUBLIC_SUPABASE_URL",

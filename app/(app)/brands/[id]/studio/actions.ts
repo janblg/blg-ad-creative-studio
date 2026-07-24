@@ -1,5 +1,4 @@
 "use server";
-import { normalizeToPng } from "@/lib/images/normalize";
 import { requireContext } from "@/lib/auth";
 import { getSecret } from "@/lib/secrets";
 import { buildMasterPrompt } from "@/lib/prompt-engine/engine";
@@ -111,18 +110,16 @@ export interface ImageResult {
 
 export async function approveAndGenerate(args: {
   masterPrompt: string;
-  refPaths: string[];
+  refB64: string[];
 }): Promise<ImageResult> {
   try {
     const { orgId } = await requireContext();
-    // Re-normalize refs at generation time so the edit endpoint always gets a
-    // clean 8-bit sRGB PNG regardless of what was stored.
-    const refs = await Promise.all(
-      args.refPaths.map(async (p) => ({
-        buffer: await normalizeToPng(await download(p), 1024),
-        mime: "image/png",
-      })),
-    );
+    // Refs are the already-validated small JPEGs produced once at upload time.
+    // No download, no re-decode — decode-once, forward-as-base64.
+    const refs = args.refB64.map((b) => ({
+      buffer: Buffer.from(b, "base64"),
+      mime: "image/jpeg",
+    }));
     const provider = await getImageProvider(orgId, "openai");
     const base = { prompt: args.masterPrompt, n: 1, quality: "medium" as const, aspectRatio: "4:5" as const };
 
