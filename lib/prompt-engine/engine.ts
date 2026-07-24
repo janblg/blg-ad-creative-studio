@@ -69,24 +69,32 @@ Target image generator: OpenAI gpt-image-1 — strictly obey §14.3: natural dec
   }
   content.push({ type: "text", text: `Brief: ${opts.brief}` });
 
-  const msg = await client.messages.create({
-    model: opts.model ?? MODEL,
-    max_tokens: 4000,
-    system,
+  const attempt = async (): Promise<MasterPromptResult> => {
+    const msg = await client.messages.create({
+      model: opts.model ?? MODEL,
+      max_tokens: 4000,
+      system,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools: [TOOL as any],
+      tool_choice: { type: "tool", name: "emit_prompt" },
+      messages: [{ role: "user", content }],
+    });
+    const tool = msg.content.find((b) => b.type === "tool_use");
+    if (!tool || tool.type !== "tool_use") {
+      throw new Error(`Prompt engine returned no tool call (stop_reason=${msg.stop_reason}).`);
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools: [TOOL as any],
-    tool_choice: { type: "tool", name: "emit_prompt" },
-    messages: [{ role: "user", content }],
-  });
-
-  const tool = msg.content.find((b) => b.type === "tool_use");
-  if (!tool || tool.type !== "tool_use") {
-    throw new Error("Prompt engine did not return a result.");
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const input = tool.input as any;
-  return {
-    visualSystem: String(input.visualSystem ?? ""),
-    masterPrompt: String(input.masterPrompt ?? ""),
+    const input = tool.input as any;
+    return {
+      visualSystem: String(input.visualSystem ?? "").trim(),
+      masterPrompt: String(input.masterPrompt ?? "").trim(),
+    };
   };
+
+  let res = await attempt();
+  if (!res.masterPrompt) res = await attempt(); // one retry on empty
+  if (!res.masterPrompt) {
+    throw new Error("Prompt engine produced an empty master prompt. Try again or simplify the brief.");
+  }
+  return res;
 }

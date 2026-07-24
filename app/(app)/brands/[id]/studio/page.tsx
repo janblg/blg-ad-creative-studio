@@ -22,12 +22,13 @@ export default async function StudioPage({
   if (!brand) notFound();
 
   return (
-    <div className="fixed inset-0 top-14 bg-neutral-100 dark:bg-neutral-950">
-      {/* Pill top bar */}
+    <div className="fixed inset-0 top-14 bg-gradient-to-b from-neutral-100 to-neutral-200 dark:from-neutral-900 dark:to-neutral-950">
+      {/* Glass pill top bar */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
         <BrandSwitcher brands={brands ?? []} current={brand.id} />
-        <div className="rounded-full border border-neutral-200 dark:border-white/10 bg-white/70 dark:bg-white/5 backdrop-blur px-4 py-2 text-sm text-neutral-500">
-          4:5 · Feed
+        <div className="rounded-full border border-white/60 dark:border-white/10 bg-white/60 dark:bg-white/5 backdrop-blur px-4 py-2">
+          <span className="text-[11px] uppercase tracking-widest text-neutral-400 mr-2">Format</span>
+          <span className="text-sm font-medium">4:5 Feed</span>
         </div>
       </div>
       <div className="h-full pt-16">
