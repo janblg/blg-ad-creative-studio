@@ -16,16 +16,33 @@ import { Resvg, initWasm } from "@resvg/resvg-wasm";
 import sharp from "sharp";
 
 // resvg-wasm renders Satori's SVG correctly (same engine as resvg-js) and runs
-// reliably on Vercel (pure WebAssembly, no native binary). Init once.
-let resvgInit: Promise<void> | undefined;
+// reliably on Vercel (pure WebAssembly, no native binary).
+//
+// initWasm() THROWS "Already initialized. The initWasm() function can be used
+// only once." if the wasm was already loaded — and a module-level promise guard
+// does NOT protect against that, because a second module instance (separate
+// bundle chunk, warm lambda re-evaluation, another caller) starts with an empty
+// guard while the underlying wasm is already live. So the init must tolerate
+// that specific error instead of propagating it. Never let this throw.
+let resvgReady: Promise<void> | undefined;
 function ensureResvg(): Promise<void> {
-  if (!resvgInit) {
-    const wasm = readFileSync(
-      path.join(process.cwd(), "node_modules/@resvg/resvg-wasm/index_bg.wasm"),
-    );
-    resvgInit = initWasm(wasm);
+  if (!resvgReady) {
+    resvgReady = (async () => {
+      try {
+        const wasm = readFileSync(
+          path.join(process.cwd(), "node_modules", "@resvg", "resvg-wasm", "index_bg.wasm"),
+        );
+        await initWasm(wasm);
+      } catch (e) {
+        const m = e instanceof Error ? e.message : String(e);
+        // Already initialized elsewhere -> the renderer is usable, carry on.
+        if (/already initialized/i.test(m)) return;
+        resvgReady = undefined; // allow a genuine failure to be retried
+        throw e;
+      }
+    })();
   }
-  return resvgInit;
+  return resvgReady;
 }
 import type {
   Anchor,
