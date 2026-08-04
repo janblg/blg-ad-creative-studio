@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Client brand assets staged locally for testing. These belong in Supabase
+# Storage (uploaded via /brands/[id]/settings), not in git history — they are
+# client trademarks and large binaries.
+/brand-assets/

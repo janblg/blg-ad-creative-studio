@@ -49,6 +49,37 @@ export async function toVisionJpegBase64(input: Buffer, max = 1024): Promise<str
   return jpeg.toString("base64");
 }
 
+/**
+ * Normalize a brand LOGO to a clean sRGB PNG that KEEPS its alpha channel.
+ *
+ * Deliberately separate from `normalizeToPng`, which flattens alpha onto white
+ * because the OpenAI edit endpoint wants opaque input. A logo flattened onto
+ * white would composite as an ugly white box over the photo, so transparency
+ * has to survive here.
+ */
+export async function normalizeLogoToPng(input: Buffer, max = 1024): Promise<Buffer> {
+  const attempt = (lenient: boolean) =>
+    sharp(input, lenient ? { failOn: "none" } : {})
+      .rotate()
+      .resize(max, max, { fit: "inside", withoutEnlargement: true })
+      .toColourspace("srgb")
+      .png({ palette: false, compressionLevel: 9, force: true })
+      .toBuffer();
+
+  try {
+    return await attempt(false);
+  } catch (e1) {
+    try {
+      return await attempt(true);
+    } catch (e2) {
+      const sig = input.subarray(0, 12).toString("hex");
+      throw new Error(
+        `Unsupported logo image (${input.length}b, sig=${sig}). ${msg(e1)} | ${msg(e2)}`,
+      );
+    }
+  }
+}
+
 export async function normalizeToPng(input: Buffer, max = 1024): Promise<Buffer> {
   const heic = isHeic(input);
   const errors: string[] = [];

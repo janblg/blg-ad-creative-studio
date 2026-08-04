@@ -24,7 +24,7 @@ export default async function BrandPage({
     { n: 2, title: "Hooks", desc: "Generate & approve the hook library" },
     { n: 3, title: "Visuals", desc: "Generate photos + design the creatives" },
     { n: 4, title: "Approval", desc: "Manager review & sign-off" },
-    { n: 5, title: "Export", desc: "Slides deck + downloadable assets" },
+    { n: 5, title: "Export", desc: "ZIP of PNGs + copy.csv, shareable review link" },
   ];
 
   return (
@@ -35,12 +35,20 @@ export default async function BrandPage({
         </Link>
         <h1 className="text-xl font-semibold mt-2">{brand.name}</h1>
         <p className="text-sm text-neutral-500 capitalize">{brand.status}</p>
-        <Link
-          href={`/brands/${brand.id}/studio`}
-          className="inline-block mt-3 rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-800 dark:bg-white dark:text-neutral-900"
-        >
-          Open Image Studio →
-        </Link>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link
+            href={`/brands/${brand.id}/studio`}
+            className="inline-block rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-800 dark:bg-white dark:text-neutral-900"
+          >
+            Open Image Studio →
+          </Link>
+          <Link
+            href={`/brands/${brand.id}/settings`}
+            className="inline-block rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            Brand profile
+          </Link>
+        </div>
       </div>
 
       <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-6">
