@@ -1,16 +1,23 @@
 # BUILD PLAN — v3 Overhaul, Decisions Locked
 
-> ## ⏸ RESUME HERE — paused 2026-07-30 end of day
+> ## ⏸ RESUME HERE — updated 2026-08-04
 >
-> **Read this file top to bottom first, then `HANDOFF.md` §7 gotchas. Nothing is committed yet** (`BUILD_PLAN.md`, `HOOK_ENGINE.md`, `scripts/test-brand-fonts.ts`, `brand-assets/` are all untracked — Jan has not asked for a commit).
+> **Read this file top to bottom first, then `HANDOFF.md` §7 gotchas.**
 >
-> **Done today:** all 10 decisions captured (§1). `HOOK_ENGINE.md` written from Jan's video playbook, translated for static ads. Phase 1 render stack **verified green in production** — `/api/render-selftest` and `?full=1` both return `ALL RENDER STEPS PASSED ✓` at 1080×1350 on version `2026-07-30-resvg-init-idempotent`. Jump N Bounce assets received, validated, and font pipeline solved (§7).
+> **Done:** all 10 decisions captured (§1). `HOOK_ENGINE.md` written. Phase 1 render stack **verified green in production**. Jump N Bounce assets validated + font pipeline solved (§7). **Phase 2a shipped** — commit `151dee0`, health version `2026-08-04-brand-profile-editor`: brand identity layer (`lib/brand/profile.ts`), font gatekeeper (`lib/render/font-validate.ts`), binary-safe asset upload (`app/api/brand-assets/route.ts`), alpha-preserving `normalizeLogoToPng()`, and the editor at `/brands/[id]/settings`.
 >
-> **Next action:** start **Phase 2a — brand profile editor** (§2). Jan approved starting it; he was asked whether to fix the three §7 render bugs first and the answer was to do the editor first, so the bug fixes have real brand data to verify against.
+> **Next action:** **Phase 2b — wire brand identity into generation** (§2, task #3). The seams are already in place and currently hardcoded in `app/(app)/brands/[id]/studio/actions.ts`:
+> - `brandPalette()` (line ~45) → replace with `resolveBrandPalette()` from `lib/brand/profile.ts`
+> - `defaultFonts()` in `applyHook` (line ~222) → replace with `resolveBrandStyle()`, and pass its `logoSize` through
+> - `hasLogo: false` in the `generateLayout()` call (line ~213) → derive from the resolved style
+> - `buildMasterPrompt()` in `startBrief` → append `engineStyleDirective(profile)`
+> Then fix the three §7 render bugs (same-anchor overlap, safe-margin overflow, scrim height) now that real brand data flows through.
 >
-> **Still open, one item only:** Jan owes a single **browser click-through in the deployed app** — one brief run to the hook step — to confirm the Claude-vision layout call and the real image download. The render stack itself needs no further testing. Do NOT give Jan curl commands; he is not a coder and `/api/render-selftest` is public, so run it yourself.
+> **Two items owed by Jan:**
+> 1. A **browser click-through** of the deployed app to the hook step, confirming the Claude-vision layout call and the real image download. The render stack itself needs no further testing.
+> 2. **Fill in the Jump N Bounce brand profile** at `/brands/[id]/settings` so Phase 2b has real data. Fonts to upload are at `brand-assets/jump-n-bounce/fonts-ttf/` (Passion One 400 → headline, Rubik 400 → body); logo at `brand-assets/jump-n-bounce/original/assets/logo/`; palette in `original/brand.json`. Set `hook_accent` to **red `#FF0000`**, not the blue primary (§7).
 >
-> **Ready-to-use brand data for testing:** `brand-assets/jump-n-bounce/` — `fonts-ttf/` holds the satori-safe converted fonts (Passion One 400, Rubik 400/600), `original/brand.json` holds the palette, `render-proof/` holds the two accent comparisons. Default Jump N Bounce's `hookAccent` to **red `#FF0000`**, not the blue primary (§7).
+> **Never give Jan curl or CLI commands** — he is not a coder. `/api/health` and `/api/render-selftest` are public, so call them yourself.
 
 
 **Date:** 2026-07-30

@@ -6,6 +6,23 @@ import type { User } from "@supabase/supabase-js";
 
 export type Role = "specialist" | "manager" | "admin";
 
+/**
+ * True if this error is Next's internal `redirect()` control-flow throw.
+ *
+ * `requireContext()` calls `redirect("/login")`, which works in a page but in a
+ * ROUTE HANDLER the throw gets caught by the handler's try/catch and surfaces as
+ * a meaningless `500 {"error":"NEXT_REDIRECT"}`. API callers need a real 401 so
+ * the client can say "sign in again" instead of showing a raw server error.
+ */
+export function isRedirectError(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    typeof (e as { digest?: unknown }).digest === "string" &&
+    (e as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
 export interface AppContext {
   user: User;
   orgId: string;

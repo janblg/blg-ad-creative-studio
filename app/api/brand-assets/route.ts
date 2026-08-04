@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireContext } from "@/lib/auth";
+import { requireContext, isRedirectError } from "@/lib/auth";
 import { normalizeLogoToPng } from "@/lib/images/normalize";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateBrandFont, fontMime } from "@/lib/render/font-validate";
@@ -178,6 +178,12 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   } catch (e) {
+    if (isRedirectError(e)) {
+      return NextResponse.json(
+        { error: "Your session expired. Reload the page and sign in again." },
+        { status: 401 },
+      );
+    }
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e) },
       { status: 500 },
