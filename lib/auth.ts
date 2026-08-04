@@ -41,12 +41,18 @@ export async function requireContext(): Promise<AppContext> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: membership } = await supabase
+  // NOT maybeSingle(): it errors when a user has more than one membership,
+  // which used to return null and fall through to bootstrapWorkspace() —
+  // minting a brand-new org on EVERY request. Ordering by created_at keeps the
+  // user's original workspace stable across requests.
+  const { data: memberships } = await supabase
     .from("memberships")
-    .select("org_id, role")
+    .select("org_id, role, created_at")
     .eq("user_id", user.id)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
 
+  const membership = memberships?.[0];
   if (membership) {
     return { user, orgId: membership.org_id, role: membership.role as Role };
   }
@@ -60,13 +66,18 @@ async function bootstrapWorkspace(
 ): Promise<{ orgId: string; role: Role }> {
   const admin = supabaseAdmin();
 
-  // Guard against a race: re-check via service role.
+  // Guard against a race: re-check via service role. Same reason as above for
+  // avoiding maybeSingle() — with 2+ rows it reports an error and returns null,
+  // which would create yet another org instead of reusing the existing one.
   const { data: existing } = await admin
     .from("memberships")
-    .select("org_id, role")
+    .select("org_id, role, created_at")
     .eq("user_id", user.id)
-    .maybeSingle();
-  if (existing) return { orgId: existing.org_id, role: existing.role as Role };
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (existing?.[0]) {
+    return { orgId: existing[0].org_id, role: existing[0].role as Role };
+  }
 
   const orgName =
     (user.email?.split("@")[0] ?? "My").replace(/[._-]/g, " ") + " workspace";

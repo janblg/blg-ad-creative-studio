@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireContext } from "@/lib/auth";
+import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { loadBrandProfile } from "@/lib/brand/profile";
 import BrandProfileForm, { type FontSlot } from "./BrandProfileForm";
@@ -13,16 +14,20 @@ export default async function BrandSettingsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { orgId } = await requireContext();
-  const admin = supabaseAdmin();
+  await requireContext();
 
-  const { data: brand } = await admin
+  // Authorize through RLS (`is_org_member(org_id)`), exactly like the brand
+  // page. Filtering by a single orgId from the membership row is wrong for a
+  // user who belongs to more than one org.
+  const supabase = await supabaseServer();
+  const { data: brand } = await supabase
     .from("brands")
     .select("id, name")
     .eq("id", id)
-    .eq("org_id", orgId)
     .maybeSingle();
   if (!brand) notFound();
+
+  const admin = supabaseAdmin();
 
   const profile = await loadBrandProfile(brand.id);
 

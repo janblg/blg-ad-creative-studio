@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { requireContext } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseServer } from "@/lib/supabase/server";
 import {
   saveBrandProfile,
   loadBrandProfile,
@@ -12,15 +13,21 @@ import {
 
 const ROLES: ColorRole[] = ["primary", "secondary", "hook_accent", "hook_text", "palette"];
 
-async function assertBrandInOrg(brandId: string): Promise<void> {
-  const { orgId } = await requireContext();
-  const { data } = await supabaseAdmin()
+/**
+ * Authorize via RLS (`is_org_member(org_id)`) rather than comparing against a
+ * single orgId from the membership row — the latter breaks for a user who
+ * belongs to more than one org. Returns the brand's own org_id.
+ */
+async function assertBrandAccess(brandId: string): Promise<{ orgId: string }> {
+  await requireContext();
+  const supabase = await supabaseServer();
+  const { data } = await supabase
     .from("brands")
-    .select("id")
+    .select("id, org_id")
     .eq("id", brandId)
-    .eq("org_id", orgId)
     .maybeSingle();
   if (!data) throw new Error("Brand not found.");
+  return { orgId: data.org_id as string };
 }
 
 export interface SaveResult {
@@ -40,7 +47,7 @@ export async function saveProfile(
   try {
     const brandId = String(formData.get("brandId") ?? "").trim();
     if (!brandId) return { error: "Missing brand." };
-    await assertBrandInOrg(brandId);
+    await assertBrandAccess(brandId);
 
     // Colors arrive as a JSON string from the client editor.
     const colors: BrandColorEntry[] = [];
@@ -99,7 +106,7 @@ export async function saveProfile(
 /** Detach a brand font (falls back to the bundled Anton/Barlow for that role). */
 export async function removeFont(brandId: string, role: "headline" | "body"): Promise<SaveResult> {
   try {
-    await assertBrandInOrg(brandId);
+    await assertBrandAccess(brandId);
     const profile = await loadBrandProfile(brandId);
     await saveBrandProfile(brandId, {
       fonts: profile.fonts.filter((f) => f.role !== role),
@@ -114,7 +121,7 @@ export async function removeFont(brandId: string, role: "headline" | "body"): Pr
 /** Detach the logo (creatives then render without one). */
 export async function removeLogo(brandId: string): Promise<SaveResult> {
   try {
-    await assertBrandInOrg(brandId);
+    await assertBrandAccess(brandId);
     await saveBrandProfile(brandId, { logoAssetId: null });
     revalidatePath(`/brands/${brandId}/settings`);
     return { ok: true };

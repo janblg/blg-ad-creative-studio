@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireContext, isRedirectError } from "@/lib/auth";
 import { normalizeLogoToPng } from "@/lib/images/normalize";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseServer } from "@/lib/supabase/server";
 import { validateBrandFont, fontMime } from "@/lib/render/font-validate";
 import { loadBrandProfile, saveBrandProfile, type FontRole } from "@/lib/brand/profile";
 import sharp from "sharp";
@@ -25,7 +26,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: Request) {
   try {
-    const { orgId } = await requireContext();
+    await requireContext();
     const form = await req.formData();
 
     const brandId = String(form.get("brandId") ?? "").trim();
@@ -39,17 +40,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file received." }, { status: 400 });
     }
 
-    // Confirm the brand belongs to this workspace before writing anything.
-    const admin = supabaseAdmin();
-    const { data: brand } = await admin
+    // Authorize through RLS (`is_org_member(org_id)`) rather than matching a
+    // single orgId from the membership row — that breaks for a user in more
+    // than one org. The brand's own org_id then owns the stored asset.
+    const scoped = await supabaseServer();
+    const { data: brand } = await scoped
       .from("brands")
-      .select("id")
+      .select("id, org_id")
       .eq("id", brandId)
-      .eq("org_id", orgId)
       .maybeSingle();
     if (!brand) {
       return NextResponse.json({ error: "Brand not found." }, { status: 404 });
     }
+    const orgId = brand.org_id as string;
+    const admin = supabaseAdmin();
 
     const raw = Buffer.from(await file.arrayBuffer());
 
