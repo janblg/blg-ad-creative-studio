@@ -5,7 +5,12 @@ import { getSecret } from "@/lib/secrets";
 import { buildMasterPrompt } from "@/lib/prompt-engine/engine";
 import { getImageProvider } from "@/lib/providers/image-factory";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { generateHooks, generateAdCopy, type AdCopy } from "@/lib/ai/creative";
+import {
+  generateHooks,
+  generateAdCopy,
+  type AdCopy,
+  type GeneratedHook,
+} from "@/lib/ai/creative";
 import { generateLayout } from "@/lib/render/vision";
 import { renderCreative } from "@/lib/render/overlay";
 import {
@@ -155,15 +160,29 @@ export async function makeHooks(args: {
   brandId: string;
   brandName: string;
   brief: string;
-}): Promise<{ error?: string; hooks?: string[] }> {
+}): Promise<{ error?: string; hooks?: GeneratedHook[] }> {
   try {
     const { orgId } = await requireContext();
     const key = await anthropicKey(orgId);
+
+    // Brand voice/audience/location shape the hooks (HOOK_ENGINE laws 1+3).
+    const profile = await loadBrandProfile(args.brandId);
+    const ctx = [
+      profile.voiceTone && `Voice/tone: ${profile.voiceTone}`,
+      profile.targetAudience && `Audience: ${profile.targetAudience}`,
+      profile.location && `Location: ${profile.location}`,
+      profile.goals && `Goals: ${profile.goals}`,
+      profile.hookFrameworks && `Brand hook notes: ${profile.hookFrameworks}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
     const hooks = await generateHooks({
       apiKey: key,
       brandName: args.brandName,
       brief: args.brief,
-      count: 5,
+      count: 10,
+      brandContext: ctx || undefined,
     });
     return { hooks };
   } catch (e) {
@@ -178,6 +197,8 @@ export async function applyHook(args: {
   brandId: string;
   imagePath: string;
   hook: string;
+  /** The hook's nominated accent word/phrase (HOOK_ENGINE §8.2). */
+  emphasis?: string;
 }): Promise<{
   error?: string;
   overlayUrl?: string;
@@ -226,6 +247,7 @@ export async function applyHook(args: {
       photoPng: visionBuf,
       photoMime: "image/jpeg",
       hook: args.hook,
+      emphasis: args.emphasis,
       palette,
       canvas,
       hasLogo: !!resolved.style.logo,

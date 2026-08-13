@@ -7,13 +7,13 @@ import {
   applyHook,
   makeCopy,
 } from "./actions";
-import type { AdCopy } from "@/lib/ai/creative";
+import type { AdCopy, GeneratedHook } from "@/lib/ai/creative";
 
 type FeedItem =
   | { kind: "user"; text: string; thumbs: string[] }
   | { kind: "engine"; visualSystem: string; masterPrompt: string; approved: boolean }
   | { kind: "image"; url: string; path: string }
-  | { kind: "hooks"; hooks: string[]; selected?: string }
+  | { kind: "hooks"; hooks: GeneratedHook[]; selected?: string }
   | { kind: "overlay"; url: string }
   | { kind: "copy"; copy: AdCopy }
   | { kind: "status"; text: string }
@@ -155,15 +155,20 @@ export function StudioFeed({
     });
   };
 
-  const overlay = (hook: string) => {
+  const overlay = (hook: GeneratedHook) => {
     if (pending) return;
     const img = [...feed].reverse().find((i) => i.kind === "image") as { path: string } | undefined;
     if (!img) return;
-    setFeed((f) => f.map((i) => (i.kind === "hooks" ? { ...i, selected: hook } : i)));
+    setFeed((f) => f.map((i) => (i.kind === "hooks" ? { ...i, selected: hook.text } : i)));
     push({ kind: "status", text: "Art-directing the text onto the image…" });
     start(async () => {
       try {
-        const res = await applyHook({ brandId, imagePath: img.path, hook });
+        const res = await applyHook({
+          brandId,
+          imagePath: img.path,
+          hook: hook.text,
+          emphasis: hook.emphasis || undefined,
+        });
         const url = res.overlayDataUrl ?? res.overlayUrl;
         if (res.error || !url) {
           push({ kind: "error", text: res.error ?? "Overlay failed." });
@@ -301,15 +306,30 @@ export function StudioFeed({
                 return (
                   <div key={i} className="rounded-3xl bg-neutral-950 text-neutral-100 p-5 border border-black/5 shadow-sm">
                     <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Pick a hook to design onto the image</div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-2">
                       {item.hooks.map((h, j) => (
                         <button key={j} onClick={() => overlay(h)} disabled={pending}
-                          className={`rounded-full px-4 py-2 text-sm border transition ${
-                            item.selected === h
+                          title={`${h.visual}\n\n${h.why}`}
+                          className={`group flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5 text-left text-sm border transition ${
+                            item.selected === h.text
                               ? "bg-white text-neutral-900 border-white"
                               : "bg-neutral-900 border-neutral-700 text-neutral-100 hover:border-neutral-400"
                           }`}>
-                          {h}
+                          <span>
+                            {h.text}
+                            {h.emphasis && (
+                              <span className={`ml-2 text-xs ${item.selected === h.text ? "text-neutral-500" : "text-neutral-400"}`}>
+                                accent: {h.emphasis}
+                              </span>
+                            )}
+                          </span>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider border ${
+                            item.selected === h.text
+                              ? "border-neutral-300 text-neutral-500"
+                              : "border-neutral-600 text-neutral-400"
+                          }`}>
+                            {h.framework}
+                          </span>
                         </button>
                       ))}
                     </div>

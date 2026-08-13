@@ -22,6 +22,8 @@ export interface GenerateLayoutParams {
   /** Media type of `photoPng` — pass "image/jpeg" for the small vision JPEG. */
   photoMime?: "image/png" | "image/jpeg";
   hook: string;
+  /** Nominated accent word/phrase — the tension word (HOOK_ENGINE §8.2). */
+  emphasis?: string;
   palette: BrandColor[];
   canvas: { width: number; height: number };
   hasLogo: boolean;
@@ -158,7 +160,11 @@ export async function generateLayout(
             },
             {
               type: "text",
-              text: `Hook to place: "${params.hook}"${extra ? `\n\n${extra}` : ""}`,
+              text: `Hook to place: "${params.hook}"${
+                params.emphasis
+                  ? `\nThe accent color MUST land on exactly: "${params.emphasis}" — split runs accordingly.`
+                  : ""
+              }${extra ? `\n\n${extra}` : ""}`,
             },
           ],
         },
