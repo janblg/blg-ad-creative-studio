@@ -129,7 +129,9 @@ Current data state (§9): meta_insights is EMPTY. Tag every hook ORIGIN: experim
   };
 
   let hooks = await attempt();
-  if (hooks.length < 5) hooks = [...hooks, ...(await attempt())].slice(0, n);
+  // Retry only when the set is truly broken — a retry doubles latency and the
+  // Studio call runs inside one serverless invocation.
+  if (hooks.length < 3) hooks = [...hooks, ...(await attempt())].slice(0, n);
   if (hooks.length === 0) throw new Error("Hook engine produced no valid hooks.");
   return hooks.slice(0, n);
 }

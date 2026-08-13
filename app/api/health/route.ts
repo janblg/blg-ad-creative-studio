@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const report: Record<string, unknown> = {
     // Bump on deploys we need to confirm are live.
-    version: "2026-08-13-canvas-server-injected",
+    version: "2026-08-13-hooks-timeout-fix",
   };
 
   const required = [

@@ -4,7 +4,10 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { StudioFeed } from "./StudioFeed";
 import { BrandSwitcher } from "./BrandSwitcher";
 
-export const maxDuration = 60;
+// Server actions invoked from this route inherit this ceiling. Hook
+// generation (10 blocks through the 21k-char playbook, possible retry) and
+// image generation both run well past 60s. Fluid compute allows 300.
+export const maxDuration = 300;
 
 export default async function StudioPage({
   params,
