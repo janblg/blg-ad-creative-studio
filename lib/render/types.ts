@@ -15,20 +15,24 @@ export type Anchor =
   | "middle-left" | "middle-center" | "middle-right"
   | "bottom-left" | "bottom-center" | "bottom-right";
 
-export type Treatment = "plain" | "outline" | "box";
+export type Treatment = "plain" | "outline" | "box" | "highlight";
 
 /** A run of text that can carry its own color (enables multi-color headlines). */
 export interface TextRun {
   text: string;
   /** Overrides the block color for this run. Hex. */
   color?: string;
+  /** Underline this run (flyer-style partial underlines). */
+  underline?: boolean;
+  /** Underline color; defaults to the run/block color. Hex. */
+  underlineColor?: string;
 }
 
 export interface TextBlock {
   runs: TextRun[];
   anchor: Anchor;
-  /** Which registered brand font to use. */
-  fontFamily: "headline" | "body";
+  /** Which registered brand font to use. "accent" is the script/display font. */
+  fontFamily: "headline" | "body" | "accent";
   /** Font size in pixels, relative to the canvas the layout was designed for. */
   fontSizePx: number;
   fontWeight?: number;
@@ -48,6 +52,10 @@ export interface TextBlock {
   boxColor?: string;
   boxPaddingPx?: number;
   boxRadiusPx?: number;
+  /** highlight treatment: a hand-painted brush-stroke bar behind the text. */
+  highlightColor?: string;
+  /** Whole-block tilt in degrees (flyer energy). Keep within ±8. */
+  rotateDeg?: number;
   /** Soft drop shadow for legibility over busy photos. */
   shadow?: boolean;
 }
@@ -82,7 +90,7 @@ export interface LayoutSpec {
 /** A brand font, provided as a raw TTF/OTF/WOFF buffer. */
 export interface BrandFont {
   /** Family name used to reference this font in a TextBlock. */
-  role: "headline" | "body";
+  role: "headline" | "body" | "accent";
   data: Buffer | ArrayBuffer;
   weight?: number;
   style?: "normal" | "italic";

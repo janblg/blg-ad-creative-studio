@@ -278,6 +278,11 @@ export async function resolveBrandStyle(brandId: string): Promise<ResolvedBrandS
     if (fb) fonts.push(fb);
   }
 
+  // The script/accent font is always the bundled one for now — brand uploads
+  // cover headline/body; flyer-style blocks reference "accent" freely.
+  const accent = fallback.find((f) => f.role === "accent");
+  if (accent) fonts.push(accent);
+
   let logo: Buffer | undefined;
   let logoSize: { width: number; height: number } | undefined;
   if (profile.logoAssetId) {

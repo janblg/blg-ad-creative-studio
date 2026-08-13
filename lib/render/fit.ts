@@ -51,7 +51,9 @@ export function estimateBlock(block: TextBlock, availWidthPx: number): BlockMetr
     }
   }
   const lineH = fs * (block.lineHeightEm ?? 1.05);
-  return { lines, heightPx: Math.round(lines * lineH + (lines - 1) * gap) };
+  // The highlight treatment wraps the line in a padded brush-stroke bar.
+  const pad = block.treatment === "highlight" ? Math.round(fs * 0.18) * 2 : 0;
+  return { lines, heightPx: Math.round(lines * lineH + (lines - 1) * gap + pad) };
 }
 
 function minFontPx(canvasW: number, canvasH: number): number {
@@ -86,6 +88,29 @@ export function fitLayout(layout: LayoutSpec): FittedLayout {
     );
     const fsWordMax = Math.floor((availW / maxLen - ls) / CHAR_W);
     if (b.fontSizePx > fsWordMax) b.fontSizePx = Math.max(minFs, fsWordMax);
+  }
+
+  // Pass 1.5 — the flyer grammar treats a block as ONE LINE. Short blocks
+  // (≤5 words: power lines, script lines, highlight bars) must not wrap — a
+  // wrapped highlight bar renders as a giant slab instead of a brush stroke.
+  // Width scales linearly with font size, so solve directly.
+  for (const b of blocks) {
+    const words = b.runs.flatMap((r) => r.text.split(/\s+/).filter(Boolean));
+    if (words.length === 0 || words.length > 5) continue;
+    // Wider factor than the wrap estimator: this pass must GUARANTEE one line,
+    // and Anton caps / Pacifico swashes run wider than the average glyph.
+    const charW = b.uppercase || b.fontFamily === "headline" ? 0.7 : 0.62;
+    const padW =
+      b.treatment === "highlight" ? Math.round(b.fontSizePx * 0.18 * 2.2) * 2 : 0;
+    const availW = (safeW * (b.maxWidthPct ?? 90)) / 100 - padW;
+    const ls = b.letterSpacingPx ?? 0;
+    const chars = words.reduce((n, w) => n + w.length, 0);
+    // Single-line width at font size fs: chars*(fs*charW + ls) + gaps
+    const k = chars * charW + (words.length - 1) * 0.28; // px width per font px
+    const widthAt = (fs: number) => fs * k + chars * ls;
+    if (widthAt(b.fontSizePx) > availW) {
+      b.fontSizePx = Math.max(minFs, Math.floor((availW - chars * ls) / k));
+    }
   }
 
   // Pass 2 — each anchor group must fit its height cap.

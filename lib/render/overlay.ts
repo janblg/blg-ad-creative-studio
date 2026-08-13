@@ -93,11 +93,17 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 function buildTextEl(block: TextBlock): El {
-  const fontFamily = block.fontFamily === "headline" ? "Headline" : "Body";
+  const fontFamily =
+    block.fontFamily === "headline"
+      ? "Headline"
+      : block.fontFamily === "accent"
+        ? "Accent"
+        : "Body";
   const wordStyleBase: Record<string, unknown> = {
     fontFamily,
     fontSize: block.fontSizePx,
-    fontWeight: block.fontWeight ?? (block.fontFamily === "headline" ? 800 : 400),
+    fontWeight:
+      block.fontWeight ?? (block.fontFamily === "headline" ? 800 : 400),
     lineHeight: block.lineHeightEm ?? 1.05,
     letterSpacing: block.letterSpacingPx ?? 0,
     color: block.color,
@@ -115,39 +121,81 @@ function buildTextEl(block: TextBlock): El {
   const words: El[] = [];
   block.runs.forEach((run) => {
     run.text.split(/\s+/).filter(Boolean).forEach((word) => {
-      words.push(
-        h("div", { ...wordStyleBase, color: run.color ?? block.color }, word),
-      );
+      const style: Record<string, unknown> = {
+        ...wordStyleBase,
+        color: run.color ?? block.color,
+      };
+      if (run.underline) {
+        style.textDecoration = "underline";
+        style.textDecorationColor = run.underlineColor ?? run.color ?? block.color;
+      }
+      words.push(h("div", style, word));
     });
   });
 
   const textAlign = block.align ?? "center";
-  const textWrap = h(
-    "div",
-    {
-      display: "flex",
-      flexWrap: "wrap",
-      gap: `${Math.round(block.fontSizePx * 0.28)}px`,
-      justifyContent:
-        textAlign === "left" ? "flex-start" : textAlign === "right" ? "flex-end" : "center",
-      maxWidth: `${block.maxWidthPct ?? 90}%`,
-    },
-    words,
-  );
+  const maxW = `${block.maxWidthPct ?? 90}%`;
+  // When a wrapper (box/highlight/rotate) is present, the percentage max-width
+  // MUST live on the wrapper: a percentage on the inner text resolves against
+  // the wrapper's own content-sized width, which re-shrinks the text below its
+  // natural width and forces a wrap at ANY font size.
+  const makeTextWrap = (constrained: boolean) =>
+    h(
+      "div",
+      {
+        display: "flex",
+        flexWrap: "wrap",
+        gap: `${Math.round(block.fontSizePx * 0.28)}px`,
+        justifyContent:
+          textAlign === "left" ? "flex-start" : textAlign === "right" ? "flex-end" : "center",
+        maxWidth: constrained ? maxW : "100%",
+      },
+      words,
+    );
+
+  // Whole-block tilt (flyer energy). Applied on the outermost element so the
+  // box/highlight rotates with the text. Satori supports CSS transforms.
+  const rotate = block.rotateDeg
+    ? { transform: `rotate(${Math.max(-8, Math.min(8, block.rotateDeg))}deg)` }
+    : {};
 
   if (block.treatment === "box") {
     return h(
       "div",
       {
         display: "flex",
+        maxWidth: maxW,
         backgroundColor: block.boxColor ?? "#000000",
         padding: `${block.boxPaddingPx ?? 18}px ${(block.boxPaddingPx ?? 18) * 1.4}px`,
         borderRadius: `${block.boxRadiusPx ?? 10}px`,
+        ...rotate,
       },
-      [textWrap],
+      [makeTextWrap(false)],
     );
   }
-  return textWrap;
+
+  if (block.treatment === "highlight") {
+    // Brush-stroke bar: an uneven hand-drawn border-radius plus a slight skew
+    // reads as a painted stroke behind the line (references: "A CENTERPIECE.").
+    const pad = Math.round(block.fontSizePx * 0.18);
+    return h(
+      "div",
+      {
+        display: "flex",
+        maxWidth: maxW,
+        backgroundColor: block.highlightColor ?? "#FF0000",
+        padding: `${pad}px ${Math.round(pad * 2.2)}px`,
+        borderRadius: "255px 15px 225px 18px / 18px 225px 15px 255px",
+        transform: `${rotate.transform ?? ""} skewX(-4deg)`.trim(),
+      },
+      [makeTextWrap(false)],
+    );
+  }
+
+  if (block.rotateDeg) {
+    return h("div", { display: "flex", maxWidth: maxW, ...rotate }, [makeTextWrap(false)]);
+  }
+  return makeTextWrap(true);
 }
 
 export interface RenderOptions {
@@ -274,7 +322,7 @@ export async function renderTextLayer(opts: RenderOptions): Promise<Buffer> {
   );
 
   const fonts = style.fonts.map((f) => ({
-    name: f.role === "headline" ? "Headline" : "Body",
+    name: f.role === "headline" ? "Headline" : f.role === "accent" ? "Accent" : "Body",
     data: f.data,
     weight: (f.weight ?? (f.role === "headline" ? 800 : 400)) as number,
     style: f.style ?? "normal",

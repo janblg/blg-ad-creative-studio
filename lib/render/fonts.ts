@@ -20,5 +20,12 @@ export function defaultFonts(): BrandFont[] {
       data: readFileSync(path.join(dir, "Barlow-SemiBold.ttf")),
       weight: 600,
     },
+    {
+      role: "accent",
+      // Script font for flyer-style connective/emotional words ("Your", "the
+      // Fun."). Pacifico, SIL OFL, single weight.
+      data: readFileSync(path.join(dir, "Pacifico-Regular.ttf")),
+      weight: 400,
+    },
   ];
 }

@@ -16,12 +16,14 @@ const hex = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "hex color");
 const textRun = z.object({
   text: z.string().min(1),
   color: hex.optional(),
+  underline: z.boolean().optional(),
+  underlineColor: hex.optional(),
 });
 
 const textBlock = z.object({
   runs: z.array(textRun).min(1),
   anchor,
-  fontFamily: z.enum(["headline", "body"]),
+  fontFamily: z.enum(["headline", "body", "accent"]),
   fontSizePx: z.number().positive(),
   fontWeight: z.number().optional(),
   lineHeightEm: z.number().positive().optional(),
@@ -30,12 +32,14 @@ const textBlock = z.object({
   uppercase: z.boolean().optional(),
   letterSpacingPx: z.number().optional(),
   color: hex,
-  treatment: z.enum(["plain", "outline", "box"]).optional(),
+  treatment: z.enum(["plain", "outline", "box", "highlight"]).optional(),
   strokeColor: hex.optional(),
   strokeWidthPx: z.number().optional(),
   boxColor: hex.optional(),
   boxPaddingPx: z.number().optional(),
   boxRadiusPx: z.number().optional(),
+  highlightColor: hex.optional(),
+  rotateDeg: z.number().min(-8).max(8).optional(),
   shadow: z.boolean().optional(),
 });
 

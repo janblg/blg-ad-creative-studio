@@ -70,6 +70,8 @@ const LAYOUT_TOOL = {
                 properties: {
                   text: { type: "string" },
                   color: { type: "string" },
+                  underline: { type: "boolean" },
+                  underlineColor: { type: "string" },
                 },
               },
             },
@@ -81,7 +83,7 @@ const LAYOUT_TOOL = {
                 "bottom-left", "bottom-center", "bottom-right",
               ],
             },
-            fontFamily: { type: "string", enum: ["headline", "body"] },
+            fontFamily: { type: "string", enum: ["headline", "body", "accent"] },
             fontSizePx: { type: "number" },
             fontWeight: { type: "number" },
             lineHeightEm: { type: "number" },
@@ -90,12 +92,14 @@ const LAYOUT_TOOL = {
             uppercase: { type: "boolean" },
             letterSpacingPx: { type: "number" },
             color: { type: "string" },
-            treatment: { type: "string", enum: ["plain", "outline", "box"] },
+            treatment: { type: "string", enum: ["plain", "outline", "box", "highlight"] },
             strokeColor: { type: "string" },
             strokeWidthPx: { type: "number" },
             boxColor: { type: "string" },
             boxPaddingPx: { type: "number" },
             boxRadiusPx: { type: "number" },
+            highlightColor: { type: "string" },
+            rotateDeg: { type: "number" },
             shadow: { type: "boolean" },
           },
         },
@@ -119,17 +123,26 @@ function systemPrompt(p: GenerateLayoutParams): string {
   const mem = p.memoryNotes?.length
     ? `\n\nLearned preferences for this brand — follow them:\n- ${p.memoryNotes.join("\n- ")}`
     : "";
-  return `You are a senior performance-ad art director. You are handed a finished, TEXT-FREE photo for a social ad and must decide how to lay the hook text over it.
+  return `You are a senior performance-ad art director for local-service Meta ads. You are handed a finished, TEXT-FREE photo and must DESIGN the hook onto it — flyer-style, like the best party-rental ads: a stacked composition of 2-4 short lines with mixed typography, not one uniform caption.
 
 Canvas: ${p.canvas.width}x${p.canvas.height} px. Brand palette: ${palette}.
 ${p.hasLogo ? "A brand logo is available to place." : "No logo available."}
 
-Rules:
-- Place text in the photo's NEGATIVE SPACE; never cover faces or the product's focal point.
-- Guarantee legibility: add a scrim behind the text and/or an outline/shadow when the background is busy or low-contrast.
-- Split the hook into runs and emphasize the 1-2 most important words using an ACCENT brand color; keep the rest in a high-contrast color (usually white or a brand dark).
-- Use the "headline" font for the hook. Size it to be punchy and readable on mobile (bold, often uppercase). Respect safe margins so nothing clips in Meta feed/story crops.
-- Return exactly one layout via the emit_layout tool. Coordinates/sizes are for the given canvas.${mem}`;
+THE FLYER GRAMMAR (this is the look — follow it):
+- Break the hook into 2-4 stacked lines, each line its own block ON THE SAME ANCHOR (the renderer stacks same-anchor blocks in order, top to bottom).
+- Use the hook's words VERBATIM, in order — you choose the line breaks and styling, but never add, drop, or replace a word.
+- Alternate type voices line by line: connective/emotional words ("Your", "the", "don't forget") in the "accent" script font, mixed case, usually white; the POWER words in the "headline" font, uppercase, big — 1.5-2.5x the script size.
+- Give exactly ONE line the "highlight" treatment (a painted brush-stroke bar) with highlightColor = a strong brand color, and white text on it. Usually the line carrying the emphasis. Never highlight more than one line.
+- A small tilt sells the hand-made energy: rotateDeg between -4 and 0 on the stacked lines (use the same value so they tilt together), 0 for a formal brand.
+- A short final sub-line (body font, much smaller, letterSpacingPx 1-2, uppercase) may carry a qualifier; underline its key words with underline + underlineColor = accent.
+- Vary line sizes boldly — a flyer is typographic rhythm, not a paragraph.
+
+HARD RULES (unchanged):
+- Compose in the photo's NEGATIVE SPACE; never cover faces or the product's focal point. Usually the stack lives in the top or bottom band.
+- Legibility first: scrim behind the stack and/or outline/shadow on non-highlighted lines when the background is busy.
+- The emphasis word/phrase gets the accent brand color (or sits on the highlight bar).
+- Respect safe margins; nothing clips in Meta feed crops. Coordinates/sizes are for the given canvas.
+- Return exactly one layout via the emit_layout tool.${mem}`;
 }
 
 export async function generateLayout(
