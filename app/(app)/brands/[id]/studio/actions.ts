@@ -5,6 +5,7 @@ import { getSecret } from "@/lib/secrets";
 import { buildMasterPrompt } from "@/lib/prompt-engine/engine";
 import { getImageProvider } from "@/lib/providers/image-factory";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseServer } from "@/lib/supabase/server";
 import {
   generateHooks,
   generateAdCopy,
@@ -20,6 +21,17 @@ import {
   engineStyleDirective,
 } from "@/lib/brand/profile";
 import { toVisionJpegBase64 } from "@/lib/images/normalize";
+
+/**
+ * Studio actions — every step persists to the workflow tables (Phase 3), so a
+ * batch survives refresh and can be resumed from the batch list.
+ *
+ * Authorization rule (BUILD_PLAN, commit b361caf): authorize via RLS —
+ * `supabaseServer()` + `.eq("id", ...)` — and take `org_id` from the returned
+ * row. Never filter by requireContext()'s single orgId. Storage and
+ * cross-table writes then use the admin client with ids the RLS query proved
+ * the user may touch.
+ */
 
 const err = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const BUCKET = "assets";
@@ -52,12 +64,65 @@ async function download(path: string): Promise<Buffer> {
   return Buffer.from(await data.arrayBuffer());
 }
 
+/** RLS-authorized brand fetch; org_id comes from the row, never the session. */
+async function authorizeBrand(brandId: string): Promise<{ orgId: string; brandName: string }> {
+  const supabase = await supabaseServer();
+  const { data } = await supabase
+    .from("brands")
+    .select("id, org_id, name")
+    .eq("id", brandId)
+    .limit(1);
+  const brand = data?.[0];
+  if (!brand) throw new Error("Brand not found or not accessible.");
+  return { orgId: brand.org_id, brandName: brand.name };
+}
+
+/** RLS-authorized batch fetch (joins to brand for org + name). */
+async function authorizeBatch(batchId: string): Promise<{
+  batch: {
+    id: string;
+    brand_id: string;
+    brief: string | null;
+    visual_system: string | null;
+    master_prompt: string | null;
+    master_prompt_approved: boolean;
+    base_image_asset_id: string | null;
+    ref_asset_ids: string[];
+  };
+  orgId: string;
+  brandName: string;
+}> {
+  const supabase = await supabaseServer();
+  const { data } = await supabase
+    .from("batches")
+    .select(
+      "id, brand_id, brief, visual_system, master_prompt, master_prompt_approved, base_image_asset_id, ref_asset_ids",
+    )
+    .eq("id", batchId)
+    .limit(1);
+  const batch = data?.[0];
+  if (!batch) throw new Error("Session not found or not accessible.");
+  const { orgId, brandName } = await authorizeBrand(batch.brand_id);
+  return { batch, orgId, brandName };
+}
+
+async function assetPath(assetId: string): Promise<string> {
+  const admin = supabaseAdmin();
+  const { data } = await admin
+    .from("image_assets")
+    .select("storage_path")
+    .eq("id", assetId)
+    .maybeSingle();
+  if (!data?.storage_path) throw new Error(`Asset ${assetId} missing.`);
+  return data.storage_path;
+}
+
 // ---------------------------------------------------------------------------
-// Step 1: brief + product photos -> engine (visual system + master prompt)
+// Step 1: brief + product photos -> engine; creates the persistent batch
 // ---------------------------------------------------------------------------
 export interface BriefResult {
   error?: string;
-  refPaths?: string[];
+  batchId?: string;
   visualSystem?: string;
   masterPrompt?: string;
 }
@@ -70,26 +135,58 @@ export async function startBrief(args: {
   try {
     const brief = args.brief.trim();
     if (!brief) return { error: "Describe the image you need." };
-    const { orgId } = await requireContext();
+    const { user } = await requireContext();
+    const { orgId } = await authorizeBrand(args.brandId);
     const key = await anthropicKey(orgId);
 
-    // The small vision JPEGs were produced by /api/upload from the in-memory
-    // decoded image — no re-download / re-decode here.
-    const refB64 = args.refs.map((r) => ({ b64: r.visionB64, mime: "image/jpeg" }));
-
-    // Brand identity flows into the engine as a bounded-palette directive
-    // (HYPERREALISM §10.3) — constraint, never an override of the realism laws.
     const profile = await loadBrandProfile(args.brandId);
-
     const engine = await buildMasterPrompt({
       brief,
       apiKey: key,
-      referenceImages: refB64.length ? refB64 : undefined,
+      referenceImages: args.refs.length
+        ? args.refs.map((r) => ({ b64: r.visionB64, mime: "image/jpeg" }))
+        : undefined,
       brandContext: engineStyleDirective(profile),
     });
 
+    const admin = supabaseAdmin();
+    // Product photos become first-class reference assets.
+    const refIds: string[] = [];
+    for (const r of args.refs) {
+      const { data, error } = await admin
+        .from("image_assets")
+        .insert({
+          org_id: orgId,
+          brand_id: args.brandId,
+          kind: "reference",
+          storage_path: r.path,
+          mime: "image/png",
+        })
+        .select("id")
+        .single();
+      if (error || !data) throw new Error(`Could not record reference: ${error?.message}`);
+      refIds.push(data.id);
+    }
+
+    const { data: batch, error: batchErr } = await admin
+      .from("batches")
+      .insert({
+        brand_id: args.brandId,
+        created_by: user.id,
+        name: brief.slice(0, 80),
+        status: "setup",
+        current_step: 1,
+        brief,
+        visual_system: engine.visualSystem,
+        master_prompt: engine.masterPrompt,
+        ref_asset_ids: refIds,
+      })
+      .select("id")
+      .single();
+    if (batchErr || !batch) throw new Error(`Could not create session: ${batchErr?.message}`);
+
     return {
-      refPaths: args.refs.map((r) => r.path),
+      batchId: batch.id,
       visualSystem: engine.visualSystem,
       masterPrompt: engine.masterPrompt,
     };
@@ -103,25 +200,31 @@ export async function startBrief(args: {
 // ---------------------------------------------------------------------------
 export interface ImageResult {
   error?: string;
-  imagePath?: string;
   imageUrl?: string;
   note?: string;
 }
 
 export async function approveAndGenerate(args: {
+  batchId: string;
   masterPrompt: string;
-  refB64: string[];
 }): Promise<ImageResult> {
   try {
-    const { orgId } = await requireContext();
-    // Refs are the already-validated small JPEGs produced once at upload time.
-    // No download, no re-decode — decode-once, forward-as-base64.
-    const refs = args.refB64.map((b) => ({
-      buffer: Buffer.from(b, "base64"),
-      mime: "image/jpeg",
-    }));
+    const { batch, orgId } = await authorizeBatch(args.batchId);
+
+    // Reference photos come from storage — the batch owns them now, so resume
+    // works with nothing held in the browser. These are OUR normalized PNGs.
+    const refs: { buffer: Buffer; mime: string }[] = [];
+    for (const id of batch.ref_asset_ids ?? []) {
+      refs.push({ buffer: await download(await assetPath(id)), mime: "image/png" });
+    }
+
     const provider = await getImageProvider(orgId, "openai");
-    const base = { prompt: args.masterPrompt, n: 1, quality: "medium" as const, aspectRatio: "4:5" as const };
+    const base = {
+      prompt: args.masterPrompt,
+      n: 1,
+      quality: "medium" as const,
+      aspectRatio: "4:5" as const,
+    };
 
     let outBuf: Buffer;
     let note: string | undefined;
@@ -133,40 +236,62 @@ export async function approveAndGenerate(args: {
       outBuf = img.buffer;
     } catch (e) {
       const m = err(e);
-      // If the reference is rejected, still deliver an image from the engine's
-      // description (it already described the real product from the photo).
       if (refs.length && /invalid_image|image file or mode/i.test(m)) {
         const [img] = await provider.generate(base);
         outBuf = img.buffer;
         note =
-          "The generator couldn't use the uploaded photo directly, so this was created from the engine's written description of it. For exact product fidelity, try a clean, well-lit product photo.";
+          "The generator couldn't use the uploaded photo directly, so this was created from the engine's written description of it.";
       } else {
         throw e;
       }
     }
 
+    const admin = supabaseAdmin();
     const imagePath = `${orgId}/studio/gen/${crypto.randomUUID()}.png`;
     await upload(imagePath, outBuf, "image/png");
-    return { imagePath, imageUrl: await signed(imagePath), note };
+    const { data: asset, error: assetErr } = await admin
+      .from("image_assets")
+      .insert({
+        org_id: orgId,
+        brand_id: batch.brand_id,
+        kind: "background",
+        storage_path: imagePath,
+        mime: "image/png",
+      })
+      .select("id")
+      .single();
+    if (assetErr || !asset) throw new Error(`Could not record image: ${assetErr?.message}`);
+
+    await admin
+      .from("batches")
+      .update({
+        master_prompt: args.masterPrompt,
+        master_prompt_approved: true,
+        base_image_asset_id: asset.id,
+        status: "hooks",
+        current_step: 2,
+      })
+      .eq("id", batch.id);
+
+    return { imageUrl: await signed(imagePath), note };
   } catch (e) {
     return { error: err(e) };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Step 3: hooks
+// Step 3: hooks — generated by the Hook Engine, persisted with §12 metadata
 // ---------------------------------------------------------------------------
+export type PersistedHook = GeneratedHook & { id: string };
+
 export async function makeHooks(args: {
-  brandId: string;
-  brandName: string;
-  brief: string;
-}): Promise<{ error?: string; hooks?: GeneratedHook[] }> {
+  batchId: string;
+}): Promise<{ error?: string; hooks?: PersistedHook[] }> {
   try {
-    const { orgId } = await requireContext();
+    const { batch, orgId, brandName } = await authorizeBatch(args.batchId);
     const key = await anthropicKey(orgId);
 
-    // Brand voice/audience/location shape the hooks (HOOK_ENGINE laws 1+3).
-    const profile = await loadBrandProfile(args.brandId);
+    const profile = await loadBrandProfile(batch.brand_id);
     const ctx = [
       profile.voiceTone && `Voice/tone: ${profile.voiceTone}`,
       profile.targetAudience && `Audience: ${profile.targetAudience}`,
@@ -179,55 +304,87 @@ export async function makeHooks(args: {
 
     const hooks = await generateHooks({
       apiKey: key,
-      brandName: args.brandName,
-      brief: args.brief,
+      brandName,
+      brief: batch.brief ?? "",
       count: 10,
       brandContext: ctx || undefined,
     });
-    return { hooks };
+
+    const admin = supabaseAdmin();
+    const rows = hooks.map((h, i) => ({
+      batch_id: batch.id,
+      text: h.text,
+      framework: h.framework,
+      origin: h.origin,
+      status: "proposed" as const,
+      order_index: i,
+      emphasis: h.emphasis,
+      visual: h.visual,
+      why: h.why,
+      negative: h.negative,
+    }));
+    const { data, error } = await admin.from("hooks").insert(rows).select("id, order_index");
+    if (error || !data) throw new Error(`Could not save hooks: ${error?.message}`);
+
+    const byIndex = new Map(data.map((r) => [r.order_index, r.id]));
+    await admin.from("batches").update({ current_step: 3 }).eq("id", batch.id);
+
+    return { hooks: hooks.map((h, i) => ({ ...h, id: byIndex.get(i) as string })) };
   } catch (e) {
     return { error: err(e) };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Step 4: overlay the chosen hook onto the image (Claude vision layout)
+// Step 4: hook -> creative (layout vision + overlay render), persisted
 // ---------------------------------------------------------------------------
 export async function applyHook(args: {
-  brandId: string;
-  imagePath: string;
-  hook: string;
-  /** The hook's nominated accent word/phrase (HOOK_ENGINE §8.2). */
-  emphasis?: string;
+  batchId: string;
+  hookId: string;
 }): Promise<{
   error?: string;
   overlayUrl?: string;
   overlayDataUrl?: string;
-  overlayPath?: string;
+  creativeId?: string;
   diag?: string;
 }> {
-  const { orgId } = await requireContext();
-  const key = await anthropicKey(orgId);
   const canvas = { width: 1080, height: 1350 };
+  let ctx;
+  try {
+    ctx = await authorizeBatch(args.batchId);
+  } catch (e) {
+    return { error: err(e) };
+  }
+  const { batch, orgId } = ctx;
+  let key: string;
+  try {
+    key = await anthropicKey(orgId);
+  } catch (e) {
+    return { error: err(e) };
+  }
 
-  // Brand identity: palette for the vision call, real fonts + logo for the
-  // renderer. Both degrade gracefully for an unfilled profile (bundled
-  // Anton/Barlow, neutral palette, no logo).
-  const profile = await loadBrandProfile(args.brandId);
+  const admin = supabaseAdmin();
+  const { data: hookRows } = await admin
+    .from("hooks")
+    .select("id, text, edited_text, emphasis")
+    .eq("id", args.hookId)
+    .eq("batch_id", batch.id)
+    .limit(1);
+  const hook = hookRows?.[0];
+  if (!hook) return { error: "Hook not found for this session." };
+  if (!batch.base_image_asset_id) return { error: "Generate the image before picking a hook." };
+
+  const profile = await loadBrandProfile(batch.brand_id);
   const palette = paletteFromProfile(profile);
-  const resolved = await resolveBrandStyle(args.brandId);
+  const resolved = await resolveBrandStyle(batch.brand_id);
 
   let photo: Buffer;
   try {
-    photo = await download(args.imagePath);
+    photo = await download(await assetPath(batch.base_image_asset_id));
   } catch (e) {
     return { error: `download step: ${err(e)}` };
   }
 
-  // Crop to the FINAL 4:5 frame BEFORE the LayoutSpec pass (BUILD_PLAN §1):
-  // gpt-image-1 has no native 4:5, so the generated frame is 2:3 — if the
-  // vision model laid text out on the uncropped image, the attention-crop
-  // could shift content under the placements afterwards.
   let framed: Buffer;
   try {
     framed = await sharp(photo)
@@ -240,14 +397,12 @@ export async function applyHook(args: {
 
   let layout;
   try {
-    // Vision gets a small JPEG of the framed image (gotcha #4 — a full-size
-    // PNG can exceed Anthropic's per-image limit).
     const visionBuf = Buffer.from(await toVisionJpegBase64(framed, 1024), "base64");
     layout = await generateLayout({
       photoPng: visionBuf,
       photoMime: "image/jpeg",
-      hook: args.hook,
-      emphasis: args.emphasis,
+      hook: hook.edited_text ?? hook.text,
+      emphasis: hook.emphasis || undefined,
       palette,
       canvas,
       hasLogo: !!resolved.style.logo,
@@ -269,8 +424,6 @@ export async function applyHook(args: {
     return { error: `render step: ${err(e)}` };
   }
 
-  // Validate the render output server-side so a bad buffer is a clear error,
-  // not a silent broken <img>.
   let meta: { width?: number; height?: number } | null = null;
   try {
     meta = await sharp(png).metadata();
@@ -278,56 +431,133 @@ export async function applyHook(args: {
     meta = null;
   }
   if (!meta?.width) {
-    return {
-      error: `render produced an invalid image (${png.length}b, sig=${png.subarray(0, 4).toString("hex")})`,
-    };
+    return { error: `render produced an invalid image (${png.length}b)` };
   }
 
-  // Serve via a compact data URL (bypasses storage/signed-URL serving) + also
-  // store the full PNG for later export.
   let dataUrl: string | undefined;
   try {
     const preview = await sharp(png).jpeg({ quality: 85 }).toBuffer();
     dataUrl = `data:image/jpeg;base64,${preview.toString("base64")}`;
   } catch {
-    /* fall back to signed URL below */
+    /* signed URL below still works */
   }
 
-  const overlayPath = `${orgId}/studio/creative/${crypto.randomUUID()}.png`;
   try {
+    const { user } = await requireContext();
+    const overlayPath = `${orgId}/studio/creative/${crypto.randomUUID()}.png`;
     await upload(overlayPath, png, "image/png");
-  } catch (e) {
-    // If storage fails we can still show the data URL.
-    return dataUrl
-      ? { overlayDataUrl: dataUrl, diag: `${meta.width}x${meta.height}, ${png.length}b (not stored: ${err(e)})` }
-      : { error: `upload step: ${err(e)}` };
-  }
+    const { data: asset, error: assetErr } = await admin
+      .from("image_assets")
+      .insert({
+        org_id: orgId,
+        brand_id: batch.brand_id,
+        kind: "composited",
+        storage_path: overlayPath,
+        width: meta.width,
+        height: meta.height,
+        mime: "image/png",
+      })
+      .select("id")
+      .single();
+    if (assetErr || !asset) throw new Error(assetErr?.message);
 
-  return {
-    overlayPath,
-    overlayUrl: await signed(overlayPath),
-    overlayDataUrl: dataUrl,
-    diag: `${meta.width}x${meta.height}, ${png.length}b`,
-  };
+    const { data: creative, error: creativeErr } = await admin
+      .from("creatives")
+      .insert({ batch_id: batch.id, hook_id: hook.id, status: "draft" })
+      .select("id")
+      .single();
+    if (creativeErr || !creative) throw new Error(creativeErr?.message);
+
+    const { data: variant, error: variantErr } = await admin
+      .from("image_variants")
+      .insert({
+        creative_id: creative.id,
+        provider: "openai",
+        model: "gpt-image-1",
+        background_asset_id: batch.base_image_asset_id,
+        composited_asset_id: asset.id,
+        layout_spec: layout,
+        generation_round: 1,
+        is_selected: true,
+      })
+      .select("id")
+      .single();
+    if (variantErr || !variant) throw new Error(variantErr?.message);
+
+    await admin
+      .from("creatives")
+      .update({ selected_variant_id: variant.id })
+      .eq("id", creative.id);
+    await admin.from("hooks").update({ status: "approved" }).eq("id", hook.id);
+    await admin.from("batches").update({ status: "approval", current_step: 4 }).eq("id", batch.id);
+    await admin.from("feedback").insert({
+      brand_id: batch.brand_id,
+      batch_id: batch.id,
+      target_type: "hook",
+      target_id: hook.id,
+      actor_user_id: user.id,
+      action: "select",
+      step: 3,
+    });
+
+    return {
+      overlayUrl: await signed(overlayPath),
+      overlayDataUrl: dataUrl,
+      creativeId: creative.id,
+      diag: `${meta.width}x${meta.height}, ${png.length}b`,
+    };
+  } catch (e) {
+    // The render succeeded — show it even if persistence hiccuped.
+    return dataUrl
+      ? { overlayDataUrl: dataUrl, diag: `render ok; not fully saved: ${err(e)}` }
+      : { error: `persist step: ${err(e)}` };
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Step 5: Meta ad copy
+// Step 5: Meta ad copy, persisted onto the creative
 // ---------------------------------------------------------------------------
 export async function makeCopy(args: {
-  brandName: string;
-  brief: string;
-  hook: string;
+  batchId: string;
+  creativeId: string;
 }): Promise<{ error?: string; copy?: AdCopy }> {
   try {
-    const { orgId } = await requireContext();
+    const { batch, orgId, brandName } = await authorizeBatch(args.batchId);
     const key = await anthropicKey(orgId);
+
+    const admin = supabaseAdmin();
+    const { data: creativeRows } = await admin
+      .from("creatives")
+      .select("id, hook_id, hooks(text, edited_text)")
+      .eq("id", args.creativeId)
+      .eq("batch_id", batch.id)
+      .limit(1);
+    const creative = creativeRows?.[0];
+    if (!creative) return { error: "Creative not found for this session." };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hookRel = creative.hooks as any;
+    const hookText = hookRel?.edited_text ?? hookRel?.text ?? "";
+
     const copy = await generateAdCopy({
       apiKey: key,
-      brandName: args.brandName,
-      brief: args.brief,
-      hook: args.hook,
+      brandName,
+      brief: batch.brief ?? "",
+      hook: hookText,
     });
+
+    const { data: copyRow, error: copyErr } = await admin
+      .from("ad_copy")
+      .insert({
+        primary_text: copy.primaryText,
+        headline: copy.headline,
+        cta: copy.cta,
+        status: "draft",
+      })
+      .select("id")
+      .single();
+    if (copyErr || !copyRow) throw new Error(copyErr?.message);
+    await admin.from("creatives").update({ copy_id: copyRow.id }).eq("id", creative.id);
+
     return { copy };
   } catch (e) {
     return { error: err(e) };

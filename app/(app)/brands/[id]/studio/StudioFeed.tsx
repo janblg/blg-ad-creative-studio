@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   startBrief,
   approveAndGenerate,
@@ -7,13 +8,14 @@ import {
   applyHook,
   makeCopy,
 } from "./actions";
-import type { AdCopy, GeneratedHook } from "@/lib/ai/creative";
+import type { AdCopy } from "@/lib/ai/creative";
+import type { BatchSummary, RestoredBatch, RestoredHook } from "@/lib/studio/load";
 
 type FeedItem =
   | { kind: "user"; text: string; thumbs: string[] }
   | { kind: "engine"; visualSystem: string; masterPrompt: string; approved: boolean }
-  | { kind: "image"; url: string; path: string }
-  | { kind: "hooks"; hooks: GeneratedHook[]; selected?: string }
+  | { kind: "image"; url: string }
+  | { kind: "hooks"; hooks: RestoredHook[]; selected?: string }
   | { kind: "overlay"; url: string }
   | { kind: "copy"; copy: AdCopy }
   | { kind: "status"; text: string }
@@ -22,20 +24,51 @@ type FeedItem =
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** Rebuild the visible feed from a persisted session. */
+function restore(b: RestoredBatch): FeedItem[] {
+  const items: FeedItem[] = [
+    { kind: "user", text: b.brief, thumbs: b.refUrls },
+    {
+      kind: "engine",
+      visualSystem: b.visualSystem,
+      masterPrompt: b.masterPrompt,
+      approved: b.masterPromptApproved,
+    },
+  ];
+  if (b.imageUrl) items.push({ kind: "image", url: b.imageUrl });
+  if (b.hooks.length) {
+    items.push({ kind: "hooks", hooks: b.hooks, selected: b.selectedHookText });
+  }
+  if (b.overlayUrl) items.push({ kind: "overlay", url: b.overlayUrl });
+  if (b.copy) items.push({ kind: "copy", copy: b.copy });
+  return items;
+}
+
 export function StudioFeed({
   brandId,
   brandName,
+  initialBatch,
+  batches,
 }: {
   brandId: string;
   brandName: string;
+  initialBatch?: RestoredBatch | null;
+  batches: BatchSummary[];
 }) {
-  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const router = useRouter();
+  const [feed, setFeed] = useState<FeedItem[]>(
+    initialBatch ? restore(initialBatch) : [],
+  );
+  const [batchId, setBatchId] = useState<string | null>(initialBatch?.id ?? null);
+  const [creativeId, setCreativeId] = useState<string | null>(
+    initialBatch?.creativeId ?? null,
+  );
+  const [master, setMaster] = useState(initialBatch?.masterPrompt ?? "");
   const [brief, setBrief] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
-  const [refs, setRefs] = useState<{ path: string; visionB64: string }[]>([]);
-  const [master, setMaster] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [showSessions, setShowSessions] = useState(false);
   const [pending, start] = useTransition();
   const fileInput = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -63,17 +96,22 @@ export function StudioFeed({
     if (fileInput.current) fileInput.current.value = "";
   };
 
-  // Step 1 — brief (+ product photos) -> engine.
+  // Step 1 — brief (+ product photos) -> engine, and CREATE the session.
   const send = () => {
     if (!brief.trim() || pending) return;
     const text = brief.trim();
     const sending = files;
     push({ kind: "user", text, thumbs: previews });
-    push({ kind: "status", text: sending.length ? "Uploading product photo(s)…" : "Prompt engine is engineering your shot…" });
+    push({
+      kind: "status",
+      text: sending.length
+        ? "Uploading product photo(s)…"
+        : "Prompt engine is engineering your shot…",
+    });
     setBrief("");
     start(async () => {
       try {
-        // 1) Binary-safe upload via route handler (not the server action).
+        // Binary-safe upload via route handler (never a server action).
         let uploadedRefs: { path: string; visionB64: string }[] = [];
         if (sending.length) {
           const fd = new FormData();
@@ -90,13 +128,12 @@ export function StudioFeed({
           }));
           push({ kind: "status", text: "Prompt engine is engineering your shot…" });
         }
-        // 2) Engine step (JSON args only).
         const res = await startBrief({ brandId, brief: text, refs: uploadedRefs });
-        if (res.error || !res.masterPrompt) {
+        if (res.error || !res.masterPrompt || !res.batchId) {
           push({ kind: "error", text: res.error ?? "Engine returned nothing." });
           return;
         }
-        setRefs(uploadedRefs);
+        setBatchId(res.batchId);
         setMaster(res.masterPrompt);
         push({
           kind: "engine",
@@ -105,6 +142,7 @@ export function StudioFeed({
           approved: false,
         });
         clearFiles();
+        router.refresh(); // session now appears in the list
       } catch (e) {
         push({ kind: "error", text: errText(e) });
       }
@@ -112,22 +150,19 @@ export function StudioFeed({
   };
 
   const approve = () => {
-    if (pending) return;
+    if (pending || !batchId) return;
     setFeed((f) =>
       f.map((i) => (i.kind === "engine" ? { ...i, approved: true, masterPrompt: master } : i)),
     );
     push({ kind: "status", text: "Generating the image (~30s)…" });
     start(async () => {
       try {
-        const res = await approveAndGenerate({
-          masterPrompt: master,
-          refB64: refs.map((r) => r.visionB64),
-        });
-        if (res.error || !res.imageUrl || !res.imagePath) {
+        const res = await approveAndGenerate({ batchId, masterPrompt: master });
+        if (res.error || !res.imageUrl) {
           push({ kind: "error", text: res.error ?? "Generation failed." });
           return;
         }
-        push({ kind: "image", url: res.imageUrl, path: res.imagePath });
+        push({ kind: "image", url: res.imageUrl });
         if (res.note) push({ kind: "info", text: res.note });
       } catch (e) {
         push({ kind: "error", text: errText(e) });
@@ -135,15 +170,12 @@ export function StudioFeed({
     });
   };
 
-  const lastUser = () =>
-    [...feed].reverse().find((i) => i.kind === "user") as { text: string } | undefined;
-
   const hooks = () => {
-    if (pending) return;
-    push({ kind: "status", text: "Writing hook options…" });
+    if (pending || !batchId) return;
+    push({ kind: "status", text: "Writing hook options (~40s)…" });
     start(async () => {
       try {
-        const res = await makeHooks({ brandId, brandName, brief: lastUser()?.text ?? "" });
+        const res = await makeHooks({ batchId });
         if (res.error || !res.hooks) {
           push({ kind: "error", text: res.error ?? "Hook generation failed." });
           return;
@@ -155,25 +187,19 @@ export function StudioFeed({
     });
   };
 
-  const overlay = (hook: GeneratedHook) => {
-    if (pending) return;
-    const img = [...feed].reverse().find((i) => i.kind === "image") as { path: string } | undefined;
-    if (!img) return;
+  const overlay = (hook: RestoredHook) => {
+    if (pending || !batchId) return;
     setFeed((f) => f.map((i) => (i.kind === "hooks" ? { ...i, selected: hook.text } : i)));
     push({ kind: "status", text: "Art-directing the text onto the image…" });
     start(async () => {
       try {
-        const res = await applyHook({
-          brandId,
-          imagePath: img.path,
-          hook: hook.text,
-          emphasis: hook.emphasis || undefined,
-        });
+        const res = await applyHook({ batchId, hookId: hook.id });
         const url = res.overlayDataUrl ?? res.overlayUrl;
         if (res.error || !url) {
           push({ kind: "error", text: res.error ?? "Overlay failed." });
           return;
         }
+        if (res.creativeId) setCreativeId(res.creativeId);
         push({ kind: "overlay", url });
         if (res.diag) push({ kind: "info", text: `Overlay render: ${res.diag}` });
       } catch (e) {
@@ -183,18 +209,11 @@ export function StudioFeed({
   };
 
   const copy = () => {
-    if (pending) return;
-    const hooksItem = [...feed].reverse().find((i) => i.kind === "hooks") as
-      | { selected?: string }
-      | undefined;
+    if (pending || !batchId || !creativeId) return;
     push({ kind: "status", text: "Writing the Meta copy…" });
     start(async () => {
       try {
-        const res = await makeCopy({
-          brandName,
-          brief: lastUser()?.text ?? "",
-          hook: hooksItem?.selected ?? "",
-        });
+        const res = await makeCopy({ batchId, creativeId });
         if (res.error || !res.copy) {
           push({ kind: "error", text: res.error ?? "Copy generation failed." });
           return;
@@ -234,6 +253,54 @@ export function StudioFeed({
         </div>
       )}
 
+      {/* Sessions control */}
+      <div className="absolute top-0 right-4 z-10 flex items-center gap-2">
+        {batchId && (
+          <button
+            onClick={() => router.push(`/brands/${brandId}/studio`)}
+            className="rounded-full border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 backdrop-blur px-3 py-1.5 text-xs font-medium hover:bg-white"
+          >
+            + New session
+          </button>
+        )}
+        <div className="relative">
+          <button
+            onClick={() => setShowSessions((v) => !v)}
+            className="rounded-full border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 backdrop-blur px-3 py-1.5 text-xs font-medium hover:bg-white"
+          >
+            Sessions ({batches.length})
+          </button>
+          {showSessions && (
+            <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-xl p-2">
+              {batches.length === 0 && (
+                <p className="px-3 py-2 text-xs text-neutral-500">
+                  No saved sessions yet.
+                </p>
+              )}
+              {batches.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => {
+                    setShowSessions(false);
+                    router.push(`/brands/${brandId}/studio?batch=${b.id}`);
+                  }}
+                  className={`w-full text-left rounded-xl px-3 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-white/5 ${
+                    b.id === batchId ? "bg-neutral-100 dark:bg-white/10" : ""
+                  }`}
+                >
+                  <div className="truncate font-medium">{b.name}</div>
+                  <div className="text-[11px] text-neutral-500">
+                    step {b.currentStep} · {b.status}
+                    {b.hookCount ? ` · ${b.hookCount} hooks` : ""} ·{" "}
+                    {new Date(b.createdAt).toLocaleDateString()}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Feed */}
       <div className="flex-1 overflow-y-auto px-4 py-8">
         <div className="mx-auto max-w-2xl space-y-4">
@@ -242,7 +309,7 @@ export function StudioFeed({
               <div className="text-3xl font-semibold tracking-tight mb-2">{brandName}</div>
               <p className="text-sm text-neutral-500 max-w-sm mx-auto">
                 Drop the real product, describe the scene, and build the ad step by
-                step — image → hook → copy.
+                step — image → hook → copy. Every session is saved.
               </p>
             </div>
           )}
@@ -307,8 +374,8 @@ export function StudioFeed({
                   <div key={i} className="rounded-3xl bg-neutral-950 text-neutral-100 p-5 border border-black/5 shadow-sm">
                     <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Pick a hook to design onto the image</div>
                     <div className="flex flex-col gap-2">
-                      {item.hooks.map((h, j) => (
-                        <button key={j} onClick={() => overlay(h)} disabled={pending}
+                      {item.hooks.map((h) => (
+                        <button key={h.id} onClick={() => overlay(h)} disabled={pending}
                           title={`${h.visual}\n\n${h.why}`}
                           className={`group flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5 text-left text-sm border transition ${
                             item.selected === h.text
@@ -341,7 +408,7 @@ export function StudioFeed({
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={item.url} alt="creative" className="w-full" />
                     <div className="p-3 flex justify-end">
-                      <button onClick={copy} disabled={pending} className={ctaPill}>Generate Meta copy →</button>
+                      <button onClick={copy} disabled={pending || !creativeId} className={ctaPill}>Generate Meta copy →</button>
                     </div>
                   </div>
                 );
@@ -419,18 +486,23 @@ export function StudioFeed({
                 const imgs = Array.from(e.clipboardData.files);
                 if (imgs.some((f) => f.type.startsWith("image/"))) addFiles(imgs);
               }}
-              placeholder="Describe the image you need…  (drop or paste a product photo)"
-              className="w-full bg-transparent outline-none text-sm px-2 py-2"
+              placeholder={
+                batchId
+                  ? "Start a new session to describe a different image…"
+                  : "Describe the image you need…  (drop or paste a product photo)"
+              }
+              disabled={!!batchId}
+              className="w-full bg-transparent outline-none text-sm px-2 py-2 disabled:opacity-50"
             />
 
             <div className="flex items-center justify-between mt-1">
               <div className="flex items-center gap-2">
-                <button onClick={() => fileInput.current?.click()} title="Attach product photos"
-                  className="h-9 w-9 rounded-full bg-white/70 dark:bg-white/10 border border-black/5 dark:border-white/10 text-lg leading-none hover:bg-white">+</button>
+                <button onClick={() => fileInput.current?.click()} title="Attach product photos" disabled={!!batchId}
+                  className="h-9 w-9 rounded-full bg-white/70 dark:bg-white/10 border border-black/5 dark:border-white/10 text-lg leading-none hover:bg-white disabled:opacity-40">+</button>
                 <span className="rounded-full px-3 py-1.5 text-xs font-medium bg-white/70 dark:bg-white/10 border border-black/5 dark:border-white/10">Image</span>
                 <span className="rounded-full px-3 py-1.5 text-xs text-neutral-400 border border-transparent" title="Coming soon">Video</span>
               </div>
-              <button onClick={send} disabled={pending || !brief.trim()}
+              <button onClick={send} disabled={pending || !brief.trim() || !!batchId}
                 className="h-10 w-10 rounded-full bg-neutral-900 text-white grid place-items-center hover:bg-neutral-700 disabled:opacity-40 dark:bg-white dark:text-neutral-900">
                 {pending ? "…" : "↑"}
               </button>
