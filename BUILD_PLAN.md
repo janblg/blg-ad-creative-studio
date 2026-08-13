@@ -17,7 +17,11 @@
 > 1. A **browser click-through** of the deployed app to the hook step, confirming the Claude-vision layout call and the real image download. The render stack itself needs no further testing.
 > 2. **Fill in the Jump N Bounce brand profile** at `/brands/[id]/settings` so Phase 2b has real data. Fonts to upload are at `brand-assets/jump-n-bounce/fonts-ttf/` (Passion One 400 → headline, Rubik 400 → body); logo at `brand-assets/jump-n-bounce/original/assets/logo/`; palette in `original/brand.json`. Set `hook_accent` to **red `#FF0000`**, not the blue primary (§7).
 >
-> **Never give Jan curl or CLI commands** — he is not a coder. `/api/health` and `/api/render-selftest` are public, so call them yourself.
+> **Never give Jan curl or CLI commands** — he is not a coder. `/api/health`, `/api/render-selftest` are public, so call them yourself. `/api/whoami` needs his session.
+>
+> **⚠️ Architectural rule, learned the hard way (commit `b361caf`):** authorize brand access via **RLS** — `supabaseServer()` + `.eq("id", brandId)` — and take `org_id` from the returned brand row. **Never** filter by the single `orgId` from `requireContext()`. Every RLS policy uses `is_org_member(org_id)`, which matches *any* org the user belongs to, so the two disagree the moment a user has more than one membership. Also: **never use `.maybeSingle()` on a table that can legitimately hold multiple rows per user** — it errors rather than returning the first row, and that error read as "no membership" was minting a fresh org on every single request. `/api/whoami` now exposes this state; `membershipCount > 1` is the tell.
+>
+> **Open cleanup:** Jan's account probably accumulated junk empty orgs and membership rows from the bug above. Harmless but untidy — **ask before deleting anything.**
 
 
 **Date:** 2026-07-30
