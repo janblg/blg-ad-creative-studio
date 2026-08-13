@@ -91,7 +91,7 @@ export function StudioFeed({
           push({ kind: "status", text: "Prompt engine is engineering your shot…" });
         }
         // 2) Engine step (JSON args only).
-        const res = await startBrief({ brief: text, refs: uploadedRefs });
+        const res = await startBrief({ brandId, brief: text, refs: uploadedRefs });
         if (res.error || !res.masterPrompt) {
           push({ kind: "error", text: res.error ?? "Engine returned nothing." });
           return;

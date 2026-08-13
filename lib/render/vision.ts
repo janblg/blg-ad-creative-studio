@@ -19,6 +19,8 @@ export interface BrandColor {
 
 export interface GenerateLayoutParams {
   photoPng: Buffer;
+  /** Media type of `photoPng` — pass "image/jpeg" for the small vision JPEG. */
+  photoMime?: "image/png" | "image/jpeg";
   hook: string;
   palette: BrandColor[];
   canvas: { width: number; height: number };
@@ -148,7 +150,11 @@ export async function generateLayout(
           content: [
             {
               type: "image",
-              source: { type: "base64", media_type: "image/png", data: base64 },
+              source: {
+                type: "base64",
+                media_type: params.photoMime ?? "image/png",
+                data: base64,
+              },
             },
             {
               type: "text",

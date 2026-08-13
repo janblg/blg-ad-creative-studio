@@ -14,6 +14,7 @@ import path from "node:path";
 import satori from "satori";
 import { Resvg, initWasm } from "@resvg/resvg-wasm";
 import sharp from "sharp";
+import { fitLayout, STACK_GAP_EM } from "./fit";
 
 // resvg-wasm renders Satori's SVG correctly (same engine as resvg-js) and runs
 // reliably on Vercel (pure WebAssembly, no native binary).
@@ -159,7 +160,10 @@ export interface RenderOptions {
 
 /** Build the transparent text/design layer as a PNG buffer. */
 export async function renderTextLayer(opts: RenderOptions): Promise<Buffer> {
-  const { style, layout } = opts;
+  const { style } = opts;
+  // Fit BEFORE rendering: shrinks overflowing fonts, and sizes the scrim to
+  // the text it backs (§7 render bugs 2 and 3).
+  const layout = fitLayout(opts.layout);
   const { width, height } = layout.canvas;
   const margin = Math.round(
     (Math.min(width, height) * (layout.safeMarginPct ?? 6)) / 100,
@@ -187,8 +191,21 @@ export async function renderTextLayer(opts: RenderOptions): Promise<Buffer> {
   }
 
   // Text blocks, each spanning the safe area and self-positioning via flex.
-  layout.blocks.forEach((block) => {
-    const { justifyContent, alignItems } = anchorFlex(block.anchor);
+  // §7 bug 1: blocks sharing an anchor used to live in separate absolute
+  // containers and overlap. Group per anchor and stack as a column — array
+  // order is visual order, top to bottom. (A logo placed at the same anchor
+  // can still collide; the vision prompt steers logo and text apart.)
+  const anchorGroups = new Map<Anchor, TextBlock[]>();
+  for (const block of layout.blocks) {
+    const group = anchorGroups.get(block.anchor) ?? [];
+    group.push(block);
+    anchorGroups.set(block.anchor, group);
+  }
+  for (const [anchor, group] of anchorGroups) {
+    const { justifyContent, alignItems } = anchorFlex(anchor);
+    const stackGap = Math.round(
+      Math.min(...group.map((b) => b.fontSizePx)) * STACK_GAP_EM,
+    );
     children.push(
       h(
         "div",
@@ -202,11 +219,12 @@ export async function renderTextLayer(opts: RenderOptions): Promise<Buffer> {
           flexDirection: "column",
           justifyContent,
           alignItems,
+          gap: `${stackGap}px`,
         },
-        [buildTextEl(block)],
+        group.map(buildTextEl),
       ),
     );
-  });
+  }
 
   // Logo.
   if (layout.logo && style.logo && opts.logoSize) {

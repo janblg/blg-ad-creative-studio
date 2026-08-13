@@ -6,9 +6,15 @@ import { buildMasterPrompt } from "@/lib/prompt-engine/engine";
 import { getImageProvider } from "@/lib/providers/image-factory";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { generateHooks, generateAdCopy, type AdCopy } from "@/lib/ai/creative";
-import { generateLayout, type BrandColor } from "@/lib/render/vision";
+import { generateLayout } from "@/lib/render/vision";
 import { renderCreative } from "@/lib/render/overlay";
-import { defaultFonts } from "@/lib/render/fonts";
+import {
+  loadBrandProfile,
+  paletteFromProfile,
+  resolveBrandStyle,
+  engineStyleDirective,
+} from "@/lib/brand/profile";
+import { toVisionJpegBase64 } from "@/lib/images/normalize";
 
 const err = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const BUCKET = "assets";
@@ -41,24 +47,6 @@ async function download(path: string): Promise<Buffer> {
   return Buffer.from(await data.arrayBuffer());
 }
 
-/** Brand palette from profile, with a solid default. */
-async function brandPalette(brandId: string): Promise<BrandColor[]> {
-  const admin = supabaseAdmin();
-  const { data } = await admin
-    .from("brand_profiles")
-    .select("colors")
-    .eq("brand_id", brandId)
-    .maybeSingle();
-  const colors = (data?.colors ?? []) as { hex?: string; role?: string }[];
-  const valid = colors.filter((c) => /^#[0-9a-fA-F]{6}$/.test(c.hex ?? ""));
-  if (valid.length >= 2) return valid.map((c) => ({ hex: c.hex!, role: c.role }));
-  return [
-    { hex: "#FFFFFF", role: "text" },
-    { hex: "#FFD23F", role: "accent" },
-    { hex: "#111111", role: "dark" },
-  ];
-}
-
 // ---------------------------------------------------------------------------
 // Step 1: brief + product photos -> engine (visual system + master prompt)
 // ---------------------------------------------------------------------------
@@ -70,6 +58,7 @@ export interface BriefResult {
 }
 
 export async function startBrief(args: {
+  brandId: string;
   brief: string;
   refs: { path: string; visionB64: string }[];
 }): Promise<BriefResult> {
@@ -83,10 +72,15 @@ export async function startBrief(args: {
     // decoded image — no re-download / re-decode here.
     const refB64 = args.refs.map((r) => ({ b64: r.visionB64, mime: "image/jpeg" }));
 
+    // Brand identity flows into the engine as a bounded-palette directive
+    // (HYPERREALISM §10.3) — constraint, never an override of the realism laws.
+    const profile = await loadBrandProfile(args.brandId);
+
     const engine = await buildMasterPrompt({
       brief,
       apiKey: key,
       referenceImages: refB64.length ? refB64 : undefined,
+      brandContext: engineStyleDirective(profile),
     });
 
     return {
@@ -193,8 +187,14 @@ export async function applyHook(args: {
 }> {
   const { orgId } = await requireContext();
   const key = await anthropicKey(orgId);
-  const palette = await brandPalette(args.brandId);
   const canvas = { width: 1080, height: 1350 };
+
+  // Brand identity: palette for the vision call, real fonts + logo for the
+  // renderer. Both degrade gracefully for an unfilled profile (bundled
+  // Anton/Barlow, neutral palette, no logo).
+  const profile = await loadBrandProfile(args.brandId);
+  const palette = paletteFromProfile(profile);
+  const resolved = await resolveBrandStyle(args.brandId);
 
   let photo: Buffer;
   try {
@@ -203,14 +203,32 @@ export async function applyHook(args: {
     return { error: `download step: ${err(e)}` };
   }
 
+  // Crop to the FINAL 4:5 frame BEFORE the LayoutSpec pass (BUILD_PLAN §1):
+  // gpt-image-1 has no native 4:5, so the generated frame is 2:3 — if the
+  // vision model laid text out on the uncropped image, the attention-crop
+  // could shift content under the placements afterwards.
+  let framed: Buffer;
+  try {
+    framed = await sharp(photo)
+      .resize(canvas.width, canvas.height, { fit: "cover", position: "attention" })
+      .png()
+      .toBuffer();
+  } catch (e) {
+    return { error: `crop step: ${err(e)}` };
+  }
+
   let layout;
   try {
+    // Vision gets a small JPEG of the framed image (gotcha #4 — a full-size
+    // PNG can exceed Anthropic's per-image limit).
+    const visionBuf = Buffer.from(await toVisionJpegBase64(framed, 1024), "base64");
     layout = await generateLayout({
-      photoPng: photo,
+      photoPng: visionBuf,
+      photoMime: "image/jpeg",
       hook: args.hook,
       palette,
       canvas,
-      hasLogo: false,
+      hasLogo: !!resolved.style.logo,
       apiKey: key,
     });
   } catch (e) {
@@ -219,7 +237,12 @@ export async function applyHook(args: {
 
   let png: Buffer;
   try {
-    png = await renderCreative({ background: photo, style: { fonts: defaultFonts() }, layout });
+    png = await renderCreative({
+      background: framed,
+      style: resolved.style,
+      layout,
+      logoSize: resolved.logoSize,
+    });
   } catch (e) {
     return { error: `render step: ${err(e)}` };
   }
