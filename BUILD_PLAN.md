@@ -1,19 +1,14 @@
 # BUILD PLAN — v3 Overhaul, Decisions Locked
 
-> ## ⏸ RESUME HERE — updated 2026-08-04
+> ## ⏸ RESUME HERE — updated 2026-08-13
 >
 > **Read this file top to bottom first, then `HANDOFF.md` §7 gotchas.**
 >
-> **Done:** all 10 decisions captured (§1). `HOOK_ENGINE.md` written. Phase 1 render stack **verified green in production**. Jump N Bounce assets validated + font pipeline solved (§7). **Phase 2a shipped** — commit `151dee0`, health version `2026-08-04-brand-profile-editor`: brand identity layer (`lib/brand/profile.ts`), font gatekeeper (`lib/render/font-validate.ts`), binary-safe asset upload (`app/api/brand-assets/route.ts`), alpha-preserving `normalizeLogoToPng()`, and the editor at `/brands/[id]/settings`.
+> **Done:** all decisions captured (§1). Phase 1 render stack verified green in production. **Phase 2a shipped** (`151dee0`): brand identity layer + editor at `/brands/[id]/settings`. **Phase 2b shipped** (`97cc2df`, health `2026-08-13-phase2b-brand-identity-live`): brand identity wired into generation — `paletteFromProfile`/`resolveBrandStyle`/`engineStyleDirective` live in `studio/actions.ts`, `hasLogo` + `logoSize` flow through, and **the crop to 4:5 now happens BEFORE the LayoutSpec pass** (vision gets a small JPEG of the final frame — gotcha #4). The three §7 render bugs are fixed in new `lib/render/fit.ts` + `overlay.ts`: same-anchor blocks stack as one column group; long headlines auto-fit (renderer-mirroring word-wrap estimation, conservative shrink, ~44px floor); scrim reach derived from stacked text height, raise-only. Verified visually via `scripts/test-render-fit.ts` (120px 15-word headline + same-anchor body + sizePct-30 scrim all corrected in one frame). **Phase 2c shipped** (`f1783ba`, health `2026-08-13-phase2c-hook-engine-live`): `HOOK_ENGINE.md` embedded base64 (`lib/hook-engine/hook-doc.ts`), loaded as the `generateHooks()` system prompt; §12 plain-text blocks parsed by `parseHookBlocks()`; §3/§6/§9 enforced mechanically by `validateHookSet()` (3–12 words, ≤80% negative, framework ≤2×, origin forced `experiment` while `meta_insights` is empty — never fabricate winners); hooks carry FRAMEWORK/EMPHASIS/VISUAL/WHY; **EMPHASIS routes into the LayoutSpec vision call** so the accent color lands on the nominated word; the feed lists hooks with framework chips + accent note, VISUAL/WHY on hover. Live-tested: 7 valid hooks, 7 distinct frameworks, 57% negativity; `max_tokens` 4500 (10 blocks truncated at 3000).
 >
-> **Next action:** **Phase 2b — wire brand identity into generation** (§2, task #3). The seams are already in place and currently hardcoded in `app/(app)/brands/[id]/studio/actions.ts`:
-> - `brandPalette()` (line ~45) → replace with `resolveBrandPalette()` from `lib/brand/profile.ts`
-> - `defaultFonts()` in `applyHook` (line ~222) → replace with `resolveBrandStyle()`, and pass its `logoSize` through
-> - `hasLogo: false` in the `generateLayout()` call (line ~213) → derive from the resolved style
-> - `buildMasterPrompt()` in `startBrief` → append `engineStyleDirective(profile)`
-> Then fix the three §7 render bugs (same-anchor overlap, safe-margin overflow, scrim height) now that real brand data flows through.
+> **Next action:** **Phase 3 — persistence** (§2 table). Write the workflow to `batches`/`hooks`/`creatives`/`image_variants`/`ad_copy`/`feedback`; batch list + resume-where-left-off. Authorize via RLS per the rule below; watch gotcha #8. Persist each hook's `VISUAL` line — the per-hook chains (decision #4) will feed it into that hook's own engine pass.
 >
-> **Two items owed by Jan:**
+> **Two items owed by Jan (unchanged):**
 > 1. A **browser click-through** of the deployed app to the hook step, confirming the Claude-vision layout call and the real image download. The render stack itself needs no further testing.
 > 2. **Fill in the Jump N Bounce brand profile** at `/brands/[id]/settings` so Phase 2b has real data. Fonts to upload are at `brand-assets/jump-n-bounce/fonts-ttf/` (Passion One 400 → headline, Rubik 400 → body); logo at `brand-assets/jump-n-bounce/original/assets/logo/`; palette in `original/brand.json`. Set `hook_accent` to **red `#FF0000`**, not the blue primary (§7).
 >
