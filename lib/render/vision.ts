@@ -39,13 +39,8 @@ const LAYOUT_TOOL = {
     "Return the layout spec for compositing the hook text and logo over the photo.",
   input_schema: {
     type: "object",
-    required: ["canvas", "blocks"],
+    required: ["blocks"],
     properties: {
-      canvas: {
-        type: "object",
-        required: ["width", "height"],
-        properties: { width: { type: "number" }, height: { type: "number" } },
-      },
       safeMarginPct: { type: "number" },
       scrim: {
         type: "object",
@@ -187,7 +182,9 @@ export async function generateLayout(
     if (!tool || tool.type !== "tool_use") {
       throw new Error("Model did not return a layout.");
     }
-    return layoutSpecSchema.parse(tool.input) as LayoutSpec;
+    const parsed = layoutSpecSchema.parse(tool.input);
+    // Canvas is the caller's fact, not the model's: always inject it.
+    return { ...parsed, canvas: params.canvas } as LayoutSpec;
   };
 
   try {

@@ -57,7 +57,12 @@ const logo = z.object({
 });
 
 export const layoutSpecSchema = z.object({
-  canvas: z.object({ width: z.number().positive(), height: z.number().positive() }),
+  // The model may omit canvas — the caller knows it and injects it after
+  // parsing (generateLayout). Requiring the model to echo it caused avoidable
+  // validation failures.
+  canvas: z
+    .object({ width: z.number().positive(), height: z.number().positive() })
+    .optional(),
   safeMarginPct: z.number().min(0).max(25).optional(),
   scrim: scrim.optional(),
   blocks: z.array(textBlock).min(1),
