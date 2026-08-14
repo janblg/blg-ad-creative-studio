@@ -3,7 +3,7 @@ import { requireContext } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase/server";
 import { StudioFeed } from "./StudioFeed";
 import { BrandSwitcher } from "./BrandSwitcher";
-import { listBatches, loadBatch } from "@/lib/studio/load";
+import { listBatches, loadBatch, listProductCategories } from "@/lib/studio/load";
 
 // Server actions invoked from this route inherit this ceiling. Hook
 // generation (10 blocks through the 21k-char playbook, possible retry) and
@@ -31,9 +31,10 @@ export default async function StudioPage({
   const brand = brandRows?.[0];
   if (!brand) notFound();
 
-  const [batches, restored] = await Promise.all([
+  const [batches, restored, categories] = await Promise.all([
     listBatches(brand.id),
     batchParam ? loadBatch(batchParam) : Promise.resolve(null),
+    listProductCategories(brand.id),
   ]);
 
   return (
@@ -53,6 +54,7 @@ export default async function StudioPage({
           brandName={brand.name}
           initialBatch={restored}
           batches={batches}
+          categories={categories}
         />
       </div>
     </div>

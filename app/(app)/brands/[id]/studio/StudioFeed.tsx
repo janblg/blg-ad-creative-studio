@@ -7,11 +7,15 @@ import {
   makeHooks,
   applyHook,
   makeCopy,
+  suggestProducts,
+  type SuggestedProduct,
 } from "./actions";
 import type { AdCopy } from "@/lib/ai/creative";
 import type { BatchSummary, RestoredBatch, RestoredHook } from "@/lib/studio/load";
 
 type FeedItem =
+  | { kind: "categories"; categories: string[]; selected?: string }
+  | { kind: "products"; products: SuggestedProduct[]; selected?: string }
   | { kind: "user"; text: string; thumbs: string[] }
   | { kind: "engine"; visualSystem: string; masterPrompt: string; approved: boolean }
   | { kind: "image"; url: string }
@@ -26,7 +30,18 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Rebuild the visible feed from a persisted session. */
 function restore(b: RestoredBatch): FeedItem[] {
-  const items: FeedItem[] = [
+  const items: FeedItem[] = [];
+  if (b.category) {
+    items.push({ kind: "categories", categories: [b.category], selected: b.category });
+  }
+  if (b.productName) {
+    items.push({
+      kind: "products",
+      products: [{ id: "restored", name: b.productName }],
+      selected: b.productName,
+    });
+  }
+  items.push(
     { kind: "user", text: b.brief, thumbs: b.refUrls },
     {
       kind: "engine",
@@ -34,7 +49,7 @@ function restore(b: RestoredBatch): FeedItem[] {
       masterPrompt: b.masterPrompt,
       approved: b.masterPromptApproved,
     },
-  ];
+  );
   if (b.imageUrl) items.push({ kind: "image", url: b.imageUrl });
   if (b.hooks.length) {
     items.push({ kind: "hooks", hooks: b.hooks, selected: b.selectedHookText });
@@ -49,15 +64,24 @@ export function StudioFeed({
   brandName,
   initialBatch,
   batches,
+  categories,
 }: {
   brandId: string;
   brandName: string;
   initialBatch?: RestoredBatch | null;
   batches: BatchSummary[];
+  categories: string[];
 }) {
   const router = useRouter();
-  const [feed, setFeed] = useState<FeedItem[]>(
-    initialBatch ? restore(initialBatch) : [],
+  const [feed, setFeed] = useState<FeedItem[]>(() => {
+    if (initialBatch) return restore(initialBatch);
+    // A brand with a catalog starts by choosing a category.
+    return categories.length ? [{ kind: "categories", categories }] : [];
+  });
+  const [category, setCategory] = useState<string | null>(initialBatch?.category ?? null);
+  const [productId, setProductId] = useState<string | null>(null);
+  const [productName, setProductName] = useState<string | null>(
+    initialBatch?.productName ?? null,
   );
   const [batchId, setBatchId] = useState<string | null>(initialBatch?.id ?? null);
   const [creativeId, setCreativeId] = useState<string | null>(
@@ -96,6 +120,37 @@ export function StudioFeed({
     if (fileInput.current) fileInput.current.value = "";
   };
 
+  // Step 0a — pick a category, get five product suggestions.
+  const chooseCategory = (cat: string) => {
+    if (pending || batchId) return;
+    setCategory(cat);
+    setFeed((f) => f.map((i) => (i.kind === "categories" ? { ...i, selected: cat } : i)));
+    push({ kind: "status", text: `Finding the best ${cat} to advertise…` });
+    start(async () => {
+      try {
+        const res = await suggestProducts({ brandId, category: cat });
+        if (res.error || !res.products?.length) {
+          push({
+            kind: "error",
+            text: res.error ?? `No products found in ${cat}.`,
+          });
+          return;
+        }
+        push({ kind: "products", products: res.products });
+      } catch (e) {
+        push({ kind: "error", text: errText(e) });
+      }
+    });
+  };
+
+  // Step 0b — pick the product the ad will feature.
+  const chooseProduct = (p: SuggestedProduct) => {
+    if (pending || batchId) return;
+    setProductId(p.id);
+    setProductName(p.name);
+    setFeed((f) => f.map((i) => (i.kind === "products" ? { ...i, selected: p.name } : i)));
+  };
+
   // Step 1 — brief (+ product photos) -> engine, and CREATE the session.
   const send = () => {
     if (!brief.trim() || pending) return;
@@ -128,7 +183,13 @@ export function StudioFeed({
           }));
           push({ kind: "status", text: "Prompt engine is engineering your shot…" });
         }
-        const res = await startBrief({ brandId, brief: text, refs: uploadedRefs });
+        const res = await startBrief({
+          brandId,
+          brief: text,
+          refs: uploadedRefs,
+          category: category ?? undefined,
+          productId: productId ?? undefined,
+        });
         if (res.error || !res.masterPrompt || !res.batchId) {
           push({ kind: "error", text: res.error ?? "Engine returned nothing." });
           return;
@@ -316,6 +377,69 @@ export function StudioFeed({
 
           {feed.map((item, i) => {
             switch (item.kind) {
+              case "categories":
+                return (
+                  <div key={i} className="rounded-3xl bg-neutral-950 text-neutral-100 p-5 border border-black/5 shadow-sm">
+                    <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">
+                      Which category are we advertising?
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {item.categories.map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => chooseCategory(c)}
+                          disabled={pending || !!batchId}
+                          className={`rounded-full px-4 py-2 text-sm border transition disabled:opacity-60 ${
+                            item.selected === c
+                              ? "bg-white text-neutral-900 border-white"
+                              : "bg-neutral-900 border-neutral-700 text-neutral-100 hover:border-neutral-400"
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              case "products":
+                return (
+                  <div key={i} className="rounded-3xl bg-neutral-950 text-neutral-100 p-5 border border-black/5 shadow-sm">
+                    <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">
+                      Pick the product this ad features
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {item.products.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => chooseProduct(p)}
+                          disabled={pending || !!batchId}
+                          className={`flex items-start justify-between gap-3 rounded-2xl px-4 py-2.5 text-left text-sm border transition disabled:opacity-60 ${
+                            item.selected === p.name
+                              ? "bg-white text-neutral-900 border-white"
+                              : "bg-neutral-900 border-neutral-700 text-neutral-100 hover:border-neutral-400"
+                          }`}
+                        >
+                          <span>
+                            <span className="font-medium">{p.name}</span>
+                            {p.why && (
+                              <span className={`block text-xs mt-0.5 ${item.selected === p.name ? "text-neutral-500" : "text-neutral-400"}`}>
+                                {p.why}
+                              </span>
+                            )}
+                          </span>
+                          {p.priceText && (
+                            <span className="shrink-0 text-xs text-neutral-400">{p.priceText}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    {item.selected && (
+                      <p className="mt-3 text-xs text-neutral-400">
+                        Now describe the scene you want in the box below.
+                      </p>
+                    )}
+                  </div>
+                );
               case "user":
                 return (
                   <div key={i} className="flex justify-end">
@@ -489,20 +613,24 @@ export function StudioFeed({
               placeholder={
                 batchId
                   ? "Start a new session to describe a different image…"
-                  : "Describe the image you need…  (drop or paste a product photo)"
+                  : categories.length && !productName
+                    ? "Pick a category and product above first…"
+                    : productName
+                      ? `Describe the scene for the ${productName}…`
+                      : "Describe the image you need…  (drop or paste a product photo)"
               }
-              disabled={!!batchId}
+              disabled={!!batchId || (categories.length > 0 && !productName)}
               className="w-full bg-transparent outline-none text-sm px-2 py-2 disabled:opacity-50"
             />
 
             <div className="flex items-center justify-between mt-1">
               <div className="flex items-center gap-2">
-                <button onClick={() => fileInput.current?.click()} title="Attach product photos" disabled={!!batchId}
+                <button onClick={() => fileInput.current?.click()} title="Attach product photos" disabled={!!batchId || (categories.length > 0 && !productName)}
                   className="h-9 w-9 rounded-full bg-white/70 dark:bg-white/10 border border-black/5 dark:border-white/10 text-lg leading-none hover:bg-white disabled:opacity-40">+</button>
                 <span className="rounded-full px-3 py-1.5 text-xs font-medium bg-white/70 dark:bg-white/10 border border-black/5 dark:border-white/10">Image</span>
                 <span className="rounded-full px-3 py-1.5 text-xs text-neutral-400 border border-transparent" title="Coming soon">Video</span>
               </div>
-              <button onClick={send} disabled={pending || !brief.trim() || !!batchId}
+              <button onClick={send} disabled={pending || !brief.trim() || !!batchId || (categories.length > 0 && !productName)}
                 className="h-10 w-10 rounded-full bg-neutral-900 text-white grid place-items-center hover:bg-neutral-700 disabled:opacity-40 dark:bg-white dark:text-neutral-900">
                 {pending ? "…" : "↑"}
               </button>

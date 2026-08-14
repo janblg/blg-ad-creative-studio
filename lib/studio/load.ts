@@ -28,6 +28,8 @@ export type RestoredHook = GeneratedHook & { id: string };
 export interface RestoredBatch {
   id: string;
   brief: string;
+  category?: string;
+  productName?: string;
   visualSystem: string;
   masterPrompt: string;
   masterPromptApproved: boolean;
@@ -80,7 +82,7 @@ export async function loadBatch(batchId: string): Promise<RestoredBatch | null> 
   const { data: batchRows } = await supabase
     .from("batches")
     .select(
-      "id, brief, visual_system, master_prompt, master_prompt_approved, base_image_asset_id, ref_asset_ids",
+      "id, brief, visual_system, master_prompt, master_prompt_approved, base_image_asset_id, ref_asset_ids, category, product_id",
     )
     .eq("id", batchId)
     .limit(1);
@@ -150,9 +152,21 @@ export async function loadBatch(batchId: string): Promise<RestoredBatch | null> 
     if (u) refUrls.push(u);
   }
 
+  let productName: string | undefined;
+  if (batch.product_id) {
+    const { data } = await supabase
+      .from("products")
+      .select("name")
+      .eq("id", batch.product_id)
+      .limit(1);
+    productName = (data?.[0]?.name as string | undefined) ?? undefined;
+  }
+
   return {
     id: batch.id,
     brief: batch.brief ?? "",
+    category: batch.category ?? undefined,
+    productName,
     visualSystem: batch.visual_system ?? "",
     masterPrompt: batch.master_prompt ?? "",
     masterPromptApproved: !!batch.master_prompt_approved,
@@ -164,4 +178,25 @@ export async function loadBatch(batchId: string): Promise<RestoredBatch | null> 
     overlayUrl,
     copy,
   };
+}
+
+/** Distinct product categories that actually have active products. */
+export async function listProductCategories(brandId: string): Promise<string[]> {
+  const supabase = await supabaseServer();
+  const { data } = await supabase
+    .from("products")
+    .select("category")
+    .eq("brand_id", brandId)
+    .eq("status", "active")
+    .not("category", "is", null)
+    .limit(2000);
+
+  const seen = new Map<string, number>();
+  for (const row of data ?? []) {
+    const c = (row.category as string | null)?.trim();
+    if (c) seen.set(c, (seen.get(c) ?? 0) + 1);
+  }
+  return [...seen.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([c]) => c);
 }

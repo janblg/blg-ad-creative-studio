@@ -88,6 +88,8 @@ async function authorizeBatch(batchId: string): Promise<{
     master_prompt_approved: boolean;
     base_image_asset_id: string | null;
     ref_asset_ids: string[];
+    category: string | null;
+    product_id: string | null;
   };
   orgId: string;
   brandName: string;
@@ -96,7 +98,7 @@ async function authorizeBatch(batchId: string): Promise<{
   const { data } = await supabase
     .from("batches")
     .select(
-      "id, brand_id, brief, visual_system, master_prompt, master_prompt_approved, base_image_asset_id, ref_asset_ids",
+      "id, brand_id, brief, visual_system, master_prompt, master_prompt_approved, base_image_asset_id, ref_asset_ids, category, product_id",
     )
     .eq("id", batchId)
     .limit(1);
@@ -118,6 +120,74 @@ async function assetPath(assetId: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Step 0: category -> five suggested products from the brand's catalog
+// ---------------------------------------------------------------------------
+export interface SuggestedProduct {
+  id: string;
+  name: string;
+  priceText?: string;
+  why?: string;
+}
+
+export async function suggestProducts(args: {
+  brandId: string;
+  category: string;
+}): Promise<{ error?: string; products?: SuggestedProduct[] }> {
+  try {
+    const { orgId } = await authorizeBrand(args.brandId);
+    const supabase = await supabaseServer();
+    const { data } = await supabase
+      .from("products")
+      .select("id, name, price_text")
+      .eq("brand_id", args.brandId)
+      .eq("category", args.category)
+      .eq("status", "active")
+      .limit(200);
+
+    const all = (data ?? []).map((p) => ({
+      id: p.id as string,
+      name: p.name as string,
+      priceText: (p.price_text as string | null) ?? undefined,
+    }));
+    if (all.length <= 5) return { products: all };
+
+    // Let the model choose a spread worth advertising rather than the first
+    // five alphabetically — variety of size/theme makes a better hook set.
+    try {
+      const key = await anthropicKey(orgId);
+      const { pickProducts } = await import("@/lib/ai/products");
+      const picked = await pickProducts({
+        apiKey: key,
+        category: args.category,
+        products: all.map((p) => ({ id: p.id, name: p.name })),
+      });
+      if (picked.length) {
+        const byId = new Map(all.map((p) => [p.id, p]));
+        const out = picked
+          .map((p) => {
+            const base = byId.get(p.id);
+            return base ? { ...base, why: p.why } : null;
+          })
+          .filter(Boolean) as SuggestedProduct[];
+        if (out.length) return { products: out.slice(0, 5) };
+      }
+    } catch {
+      // fall through to a plain sample
+    }
+    return { products: all.slice(0, 5) };
+  } catch (e) {
+    return { error: err(e) };
+  }
+}
+
+/** Brief text sent to the AI: the user's words plus the chosen product. */
+function briefWithProduct(brief: string, productName?: string | null): string {
+  return productName
+    ? `${brief}\n\nThe ad features this exact rental product from the brand's catalog: "${productName}". It must be the hero of the image.`
+    : brief;
+}
+
+// ---------------------------------------------------------------------------
 // Step 1: brief + product photos -> engine; creates the persistent batch
 // ---------------------------------------------------------------------------
 export interface BriefResult {
@@ -131,6 +201,8 @@ export async function startBrief(args: {
   brandId: string;
   brief: string;
   refs: { path: string; visionB64: string }[];
+  category?: string;
+  productId?: string;
 }): Promise<BriefResult> {
   try {
     const brief = args.brief.trim();
@@ -140,8 +212,21 @@ export async function startBrief(args: {
     const key = await anthropicKey(orgId);
 
     const profile = await loadBrandProfile(args.brandId);
+
+    // The catalog product becomes the hero of the scene.
+    let productName: string | null = null;
+    if (args.productId) {
+      const supabase = await supabaseServer();
+      const { data } = await supabase
+        .from("products")
+        .select("name")
+        .eq("id", args.productId)
+        .limit(1);
+      productName = (data?.[0]?.name as string | undefined) ?? null;
+    }
+
     const engine = await buildMasterPrompt({
-      brief,
+      brief: briefWithProduct(brief, productName),
       apiKey: key,
       referenceImages: args.refs.length
         ? args.refs.map((r) => ({ b64: r.visionB64, mime: "image/jpeg" }))
@@ -180,6 +265,8 @@ export async function startBrief(args: {
         visual_system: engine.visualSystem,
         master_prompt: engine.masterPrompt,
         ref_asset_ids: refIds,
+        category: args.category ?? null,
+        product_id: args.productId ?? null,
       })
       .select("id")
       .single();
@@ -302,10 +389,20 @@ export async function makeHooks(args: {
       .filter(Boolean)
       .join("\n");
 
+    let productName: string | null = null;
+    if (batch.product_id) {
+      const { data } = await supabaseAdmin()
+        .from("products")
+        .select("name")
+        .eq("id", batch.product_id)
+        .maybeSingle();
+      productName = (data?.name as string | undefined) ?? null;
+    }
+
     const hooks = await generateHooks({
       apiKey: key,
       brandName,
-      brief: batch.brief ?? "",
+      brief: briefWithProduct(batch.brief ?? "", productName),
       count: 10,
       brandContext: ctx || undefined,
     });
