@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const report: Record<string, unknown> = {
     // Bump on deploys we need to confirm are live.
-    version: "2026-08-13-phase4d-real-product-photos",
+    version: "2026-08-14-phase5a-dark-design-system",
   };
 
   const required = [

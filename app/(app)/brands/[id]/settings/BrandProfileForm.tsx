@@ -51,8 +51,8 @@ function contrastOnScrim(hex: string): number {
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 const field =
-  "w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm";
-const label = "block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1";
+  "w-full rounded-md border border-line bg-surface px-3 py-2 text-sm";
+const label = "block text-xs font-medium text-neutral-600 dark:text-text-faint mb-1";
 
 export interface FontSlot {
   role: "headline" | "body";
@@ -168,9 +168,9 @@ export default function BrandProfileForm({
   return (
     <div className="space-y-8">
       {/* ---------- Import from website ---------- */}
-      <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-5">
+      <section className="rounded-lg border border-line p-5">
         <h2 className="font-medium mb-1">Import from website</h2>
-        <p className="text-xs text-neutral-500 mb-4">
+        <p className="text-xs text-text-dim mb-4">
           Paste the client&apos;s website and we&apos;ll pull their logo and brand
           colors. Colors land in the palette below for you to check before saving.
         </p>
@@ -185,13 +185,13 @@ export default function BrandProfileForm({
               }
             }}
             placeholder="jumpnbounce.com"
-            className="flex-1 rounded-md border border-neutral-300 px-3 py-2 text-sm dark:bg-neutral-900 dark:border-neutral-700"
+            className="flex-1 rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm"
           />
           <button
             type="button"
             onClick={runImport}
             disabled={importing || !siteUrl.trim()}
-            className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-800 disabled:opacity-40 dark:bg-white dark:text-neutral-900"
+            className="rounded-md bg-text text-canvas px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-40"
           >
             {importing ? "Reading site…" : "Import"}
           </button>
@@ -200,19 +200,19 @@ export default function BrandProfileForm({
           <p
             className={`mt-3 rounded-md px-3 py-2 text-sm border ${
               importMsg.ok
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                : "bg-red-50 text-red-700 border-red-200"
+                ? "bg-ok/10 text-ok border-ok/30"
+                : "bg-bad/10 text-bad border-bad/30"
             }`}
           >
             {importMsg.text}
           </p>
         )}
 
-        <div className="mt-5 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+        <div className="mt-5 pt-4 border-t border-line">
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="text-sm font-medium">Product catalog</div>
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-text-dim">
                 Pull the rental inventory — categories, product names, prices and
                 product photos — from the same address. Works with Event Rental
                 Systems and Inflatable Office sites. The photo of the product you
@@ -224,7 +224,7 @@ export default function BrandProfileForm({
               type="button"
               onClick={runProductImport}
               disabled={prodImporting || !siteUrl.trim()}
-              className="shrink-0 rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium hover:bg-neutral-100 dark:hover:bg-neutral-900 disabled:opacity-40"
+              className="shrink-0 rounded-md border border-line px-4 py-2 text-sm font-medium hover:bg-raised disabled:opacity-40"
             >
               {prodImporting ? "Reading catalog…" : "Import products"}
             </button>
@@ -233,8 +233,8 @@ export default function BrandProfileForm({
             <p
               className={`mt-3 rounded-md px-3 py-2 text-sm border ${
                 prodMsg.ok
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                  : "bg-red-50 text-red-700 border-red-200"
+                  ? "bg-ok/10 text-ok border-ok/30"
+                  : "bg-bad/10 text-bad border-bad/30"
               }`}
             >
               {prodMsg.text}
@@ -248,9 +248,9 @@ export default function BrandProfileForm({
         <input type="hidden" name="colors" value={JSON.stringify(colors)} />
 
         {/* ---------- Identity ---------- */}
-        <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-5">
+        <section className="rounded-lg border border-line p-5">
           <h2 className="font-medium mb-1">Brand</h2>
-          <p className="text-xs text-neutral-500 mb-4">
+          <p className="text-xs text-text-dim mb-4">
             Feeds hook generation, the image prompt engine, and ad copy.
           </p>
           <div className="space-y-4">
@@ -299,7 +299,7 @@ export default function BrandProfileForm({
                 defaultValue={profile.imagePromptStyle}
                 placeholder="Real backyard parties, not studio. Sunny, mid-afternoon. Kids mid-motion."
               />
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-text-dim">
                 Guides the scene. The hyperrealism rules always take precedence over style notes.
               </p>
             </div>
@@ -307,18 +307,18 @@ export default function BrandProfileForm({
         </section>
 
         {/* ---------- Palette ---------- */}
-        <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-5">
+        <section className="rounded-lg border border-line p-5">
           <div className="flex items-start justify-between gap-4 mb-1">
             <h2 className="font-medium">Palette</h2>
             <button
               type="button"
               onClick={() => setColors((c) => [...c, { name: "", hex: "#000000", role: "palette" }])}
-              className="text-xs rounded-md border border-neutral-300 dark:border-neutral-700 px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              className="text-xs rounded-md border border-line px-2 py-1 hover:bg-raised"
             >
               + Add color
             </button>
           </div>
-          <p className="text-xs text-neutral-500 mb-4">
+          <p className="text-xs text-text-dim mb-4">
             Brand colors constrain the scene palette and set the hook text colors.
           </p>
 
@@ -329,14 +329,14 @@ export default function BrandProfileForm({
               const lowContrast =
                 valid && (row.role === "hook_accent" || row.role === "hook_text") && ratio! < 3;
               return (
-                <div key={i} className="rounded-md border border-neutral-200 dark:border-neutral-800 p-3">
+                <div key={i} className="rounded-md border border-line p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <input
                       type="color"
                       aria-label={`Color ${i + 1} swatch`}
                       value={valid ? row.hex : "#000000"}
                       onChange={(e) => setRow(i, { hex: e.target.value.toUpperCase() })}
-                      className="h-9 w-12 shrink-0 cursor-pointer rounded border border-neutral-300 dark:border-neutral-700 bg-transparent"
+                      className="h-9 w-12 shrink-0 cursor-pointer rounded border border-line bg-transparent"
                     />
                     <input
                       aria-label={`Color ${i + 1} hex`}
@@ -365,13 +365,13 @@ export default function BrandProfileForm({
                     <button
                       type="button"
                       onClick={() => setColors((c) => c.filter((_, j) => j !== i))}
-                      className="shrink-0 rounded-md border border-neutral-300 dark:border-neutral-700 px-2 py-1.5 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      className="shrink-0 rounded-md border border-line px-2 py-1.5 text-xs hover:bg-raised"
                       aria-label={`Remove color ${i + 1}`}
                     >
                       Remove
                     </button>
                   </div>
-                  <p className="mt-2 text-xs text-neutral-500">{ROLE_HELP[row.role]}</p>
+                  <p className="mt-2 text-xs text-text-dim">{ROLE_HELP[row.role]}</p>
                   {!valid && (
                     <p className="mt-1 text-xs text-red-600">
                       Needs a 6-digit hex like #01509B.
@@ -393,7 +393,7 @@ export default function BrandProfileForm({
           <button
             type="submit"
             disabled={pending}
-            className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-900"
+            className="rounded-md bg-text text-canvas px-4 py-2 text-sm font-medium hover:bg-neutral-800 disabled:opacity-60 dark:bg-surface-2 text-text"
           >
             {pending ? "Saving…" : "Save brand profile"}
           </button>
@@ -403,9 +403,9 @@ export default function BrandProfileForm({
       </form>
 
       {/* ---------- Assets (separate: binary must not cross a server action) ---------- */}
-      <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-5">
+      <section className="rounded-lg border border-line p-5">
         <h2 className="font-medium mb-1">Fonts</h2>
-        <p className="text-xs text-neutral-500 mb-4">
+        <p className="text-xs text-text-dim mb-4">
           Rendered as real vector text, so the exact font ships. Needs a single fixed
           weight as <code className="font-mono">.ttf</code>, <code className="font-mono">.otf</code>{" "}
           or <code className="font-mono">.woff</code> — not <code className="font-mono">.woff2</code>,
@@ -418,9 +418,9 @@ export default function BrandProfileForm({
         </div>
       </section>
 
-      <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-5">
+      <section className="rounded-lg border border-line p-5">
         <h2 className="font-medium mb-1">Logo</h2>
-        <p className="text-xs text-neutral-500 mb-4">
+        <p className="text-xs text-text-dim mb-4">
           Composited onto every creative. Transparent PNG works best — transparency is preserved.
         </p>
         <LogoUpload brandId={brandId} currentUrl={logoUrl} />
@@ -469,10 +469,10 @@ function FontUpload({ brandId, slot }: { brandId: string; slot: FontSlot }) {
   const fallback = slot.role === "headline" ? "Anton" : "Barlow SemiBold";
 
   return (
-    <div className="rounded-md border border-neutral-200 dark:border-neutral-800 p-3">
+    <div className="rounded-md border border-line p-3">
       <div className="flex flex-wrap items-center gap-3">
         <span className="w-20 text-sm font-medium capitalize">{slot.role}</span>
-        <span className="text-xs text-neutral-500 flex-1 min-w-[10rem]">
+        <span className="text-xs text-text-dim flex-1 min-w-[10rem]">
           {current ? (
             <>
               <span className="font-mono">{current.filename}</span> · weight {current.weight}
@@ -481,12 +481,12 @@ function FontUpload({ brandId, slot }: { brandId: string; slot: FontSlot }) {
             <>Using bundled fallback: {fallback}</>
           )}
         </span>
-        <label className="text-xs text-neutral-600 dark:text-neutral-400">
+        <label className="text-xs text-neutral-600 dark:text-text-faint">
           Weight{" "}
           <input
             type="number" min={100} max={900} step={100} value={weight}
             onChange={(e) => setWeight(Number(e.target.value))}
-            className="w-20 rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-sm"
+            className="w-20 rounded-md border border-line bg-surface px-2 py-1 text-sm"
           />
         </label>
         <input
@@ -512,13 +512,13 @@ function FontUpload({ brandId, slot }: { brandId: string; slot: FontSlot }) {
                 else setCurrent(null);
               })
             }
-            className="rounded-md border border-neutral-300 dark:border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            className="rounded-md border border-line px-2 py-1 text-xs hover:bg-raised"
           >
             Remove
           </button>
         )}
       </div>
-      {busy && <p className="mt-2 text-xs text-neutral-500">Checking and uploading…</p>}
+      {busy && <p className="mt-2 text-xs text-text-dim">Checking and uploading…</p>}
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>
   );
@@ -560,7 +560,7 @@ function LogoUpload({ brandId, currentUrl }: { brandId: string; currentUrl: stri
 
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <div className="flex h-20 w-32 items-center justify-center rounded-md border border-neutral-200 dark:border-neutral-800 bg-[repeating-conic-gradient(#e5e5e5_0_25%,transparent_0_50%)] bg-[length:16px_16px]">
+      <div className="flex h-20 w-32 items-center justify-center rounded-md border border-line bg-[repeating-conic-gradient(#e5e5e5_0_25%,transparent_0_50%)] bg-[length:16px_16px]">
         {url ? (
           <Image
             src={url}
@@ -571,7 +571,7 @@ function LogoUpload({ brandId, currentUrl }: { brandId: string; currentUrl: stri
             className="max-h-20 w-auto object-contain"
           />
         ) : (
-          <span className="text-xs text-neutral-500">No logo</span>
+          <span className="text-xs text-text-dim">No logo</span>
         )}
       </div>
       <div className="space-y-1">
@@ -587,8 +587,8 @@ function LogoUpload({ brandId, currentUrl }: { brandId: string; currentUrl: stri
           className="text-xs"
           aria-label="Upload brand logo"
         />
-        {meta && <p className="text-xs text-neutral-500">{meta}</p>}
-        {busy && <p className="text-xs text-neutral-500">Uploading…</p>}
+        {meta && <p className="text-xs text-text-dim">{meta}</p>}
+        {busy && <p className="text-xs text-text-dim">Uploading…</p>}
         {error && <p className="text-xs text-red-600">{error}</p>}
         {url && !busy && (
           <button
@@ -603,7 +603,7 @@ function LogoUpload({ brandId, currentUrl }: { brandId: string; currentUrl: stri
                 }
               })
             }
-            className="rounded-md border border-neutral-300 dark:border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            className="rounded-md border border-line px-2 py-1 text-xs hover:bg-raised"
           >
             Remove logo
           </button>

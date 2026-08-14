@@ -57,12 +57,12 @@ export default async function BrandSettingsPage({
       <div className="mb-6">
         <Link
           href={`/brands/${brand.id}`}
-          className="text-sm text-neutral-500 hover:underline"
+          className="text-sm text-text-dim hover:underline"
         >
           ← {brand.name}
         </Link>
         <h1 className="text-xl font-semibold mt-2">Brand profile</h1>
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-text-dim">
           Everything here feeds generation: hooks, the image prompt, text layout, and copy.
         </p>
       </div>

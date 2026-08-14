@@ -10,8 +10,8 @@ export function BrandSwitcher({
 }) {
   const router = useRouter();
   return (
-    <label className="flex items-center gap-2 rounded-full border border-neutral-200 dark:border-white/10 bg-white/70 dark:bg-white/5 backdrop-blur px-4 py-2">
-      <span className="text-[11px] uppercase tracking-widest text-neutral-400">
+    <label className="flex items-center gap-2 rounded-full border border-line bg-raised backdrop-blur px-4 py-2">
+      <span className="text-[11px] uppercase tracking-widest text-text-faint">
         Brand
       </span>
       <select

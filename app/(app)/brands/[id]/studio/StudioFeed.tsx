@@ -287,7 +287,7 @@ export function StudioFeed({
   };
 
   const ctaPill =
-    "rounded-full px-4 py-2 text-sm font-medium bg-white/70 dark:bg-white/10 backdrop-blur border border-black/5 dark:border-white/10 hover:bg-white transition disabled:opacity-40";
+    "rounded-full px-4 py-2 text-sm font-medium bg-raised backdrop-blur border border-line hover:bg-line transition disabled:opacity-40";
 
   return (
     <div
@@ -307,8 +307,8 @@ export function StudioFeed({
       }}
     >
       {dragging && (
-        <div className="absolute inset-0 z-20 m-3 rounded-3xl border-2 border-dashed border-neutral-400/70 bg-white/50 dark:bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
-          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+        <div className="absolute inset-0 z-20 m-3 rounded-3xl border-2 border-dashed border-line-strong/70 bg-canvas/70 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <span className="text-sm font-medium text-text-dim">
             Drop product photo(s) to attach
           </span>
         </div>
@@ -319,7 +319,7 @@ export function StudioFeed({
         {batchId && (
           <button
             onClick={() => router.push(`/brands/${brandId}/studio`)}
-            className="rounded-full border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 backdrop-blur px-3 py-1.5 text-xs font-medium hover:bg-white"
+            className="rounded-full border border-line bg-raised backdrop-blur px-3 py-1.5 text-xs font-medium hover:bg-line"
           >
             + New session
           </button>
@@ -327,14 +327,14 @@ export function StudioFeed({
         <div className="relative">
           <button
             onClick={() => setShowSessions((v) => !v)}
-            className="rounded-full border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 backdrop-blur px-3 py-1.5 text-xs font-medium hover:bg-white"
+            className="rounded-full border border-line bg-raised backdrop-blur px-3 py-1.5 text-xs font-medium hover:bg-line"
           >
             Sessions ({batches.length})
           </button>
           {showSessions && (
-            <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-xl p-2">
+            <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-2xl border border-black/10 dark:border-white/10 bg-surface shadow-xl p-2">
               {batches.length === 0 && (
-                <p className="px-3 py-2 text-xs text-neutral-500">
+                <p className="px-3 py-2 text-xs text-text-dim">
                   No saved sessions yet.
                 </p>
               )}
@@ -345,12 +345,12 @@ export function StudioFeed({
                     setShowSessions(false);
                     router.push(`/brands/${brandId}/studio?batch=${b.id}`);
                   }}
-                  className={`w-full text-left rounded-xl px-3 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-white/5 ${
-                    b.id === batchId ? "bg-neutral-100 dark:bg-white/10" : ""
+                  className={`w-full text-left rounded-xl px-3 py-2 text-sm hover:bg-raised ${
+                    b.id === batchId ? "bg-raised" : ""
                   }`}
                 >
                   <div className="truncate font-medium">{b.name}</div>
-                  <div className="text-[11px] text-neutral-500">
+                  <div className="text-[11px] text-text-dim">
                     step {b.currentStep} · {b.status}
                     {b.hookCount ? ` · ${b.hookCount} hooks` : ""} ·{" "}
                     {new Date(b.createdAt).toLocaleDateString()}
@@ -368,7 +368,7 @@ export function StudioFeed({
           {feed.length === 0 && (
             <div className="text-center mt-20">
               <div className="text-3xl font-semibold tracking-tight mb-2">{brandName}</div>
-              <p className="text-sm text-neutral-500 max-w-sm mx-auto">
+              <p className="text-sm text-text-dim max-w-sm mx-auto">
                 Drop the real product, describe the scene, and build the ad step by
                 step — image → hook → copy. Every session is saved.
               </p>
@@ -379,8 +379,8 @@ export function StudioFeed({
             switch (item.kind) {
               case "categories":
                 return (
-                  <div key={i} className="rounded-3xl bg-neutral-950 text-neutral-100 p-5 border border-black/5 shadow-sm">
-                    <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">
+                  <div key={i} className="rounded-3xl bg-surface text-text p-5 border border-black/5 shadow-sm">
+                    <div className="text-[11px] uppercase tracking-widest text-text-dim mb-3">
                       Which category are we advertising?
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -391,8 +391,8 @@ export function StudioFeed({
                           disabled={pending || !!batchId}
                           className={`rounded-full px-4 py-2 text-sm border transition disabled:opacity-60 ${
                             item.selected === c
-                              ? "bg-white text-neutral-900 border-white"
-                              : "bg-neutral-900 border-neutral-700 text-neutral-100 hover:border-neutral-400"
+                              ? "bg-text text-canvas border-text"
+                              : "bg-surface-2 border-line text-text hover:border-line-strong"
                           }`}
                         >
                           {c}
@@ -403,8 +403,8 @@ export function StudioFeed({
                 );
               case "products":
                 return (
-                  <div key={i} className="rounded-3xl bg-neutral-950 text-neutral-100 p-5 border border-black/5 shadow-sm">
-                    <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">
+                  <div key={i} className="rounded-3xl bg-surface text-text p-5 border border-black/5 shadow-sm">
+                    <div className="text-[11px] uppercase tracking-widest text-text-dim mb-3">
                       Pick the product this ad features
                     </div>
                     <div className="flex flex-col gap-2">
@@ -415,8 +415,8 @@ export function StudioFeed({
                           disabled={pending || !!batchId}
                           className={`flex items-start justify-between gap-3 rounded-2xl px-4 py-2.5 text-left text-sm border transition disabled:opacity-60 ${
                             item.selected === p.name
-                              ? "bg-white text-neutral-900 border-white"
-                              : "bg-neutral-900 border-neutral-700 text-neutral-100 hover:border-neutral-400"
+                              ? "bg-text text-canvas border-text"
+                              : "bg-surface-2 border-line text-text hover:border-line-strong"
                           }`}
                         >
                           <span className="flex items-center gap-3 min-w-0">
@@ -425,26 +425,26 @@ export function StudioFeed({
                               <img
                                 src={p.imageUrl}
                                 alt=""
-                                className="h-14 w-14 shrink-0 rounded-xl object-cover border border-black/10 dark:border-white/15 bg-white"
+                                className="h-14 w-14 shrink-0 rounded-xl object-cover border border-line-strong bg-surface-2"
                               />
                             )}
                             <span className="min-w-0">
                               <span className="font-medium">{p.name}</span>
                               {p.why && (
-                                <span className={`block text-xs mt-0.5 ${item.selected === p.name ? "text-neutral-500" : "text-neutral-400"}`}>
+                                <span className={`block text-xs mt-0.5 ${item.selected === p.name ? "text-text-dim" : "text-text-faint"}`}>
                                   {p.why}
                                 </span>
                               )}
                             </span>
                           </span>
                           {p.priceText && (
-                            <span className="shrink-0 text-xs text-neutral-400">{p.priceText}</span>
+                            <span className="shrink-0 text-xs text-text-faint">{p.priceText}</span>
                           )}
                         </button>
                       ))}
                     </div>
                     {item.selected && (
-                      <p className="mt-3 text-xs text-neutral-400">
+                      <p className="mt-3 text-xs text-text-faint">
                         Now describe the scene you want in the box below.
                       </p>
                     )}
@@ -453,7 +453,7 @@ export function StudioFeed({
               case "user":
                 return (
                   <div key={i} className="flex justify-end">
-                    <div className="max-w-[85%] rounded-3xl rounded-br-lg bg-neutral-900 text-white px-4 py-3 shadow-sm">
+                    <div className="max-w-[85%] rounded-3xl rounded-br-lg bg-surface-2 text-text px-4 py-3 shadow-sm">
                       {item.thumbs.length > 0 && (
                         <div className="flex gap-2 mb-2">
                           {item.thumbs.map((t, j) => (
@@ -468,24 +468,24 @@ export function StudioFeed({
                 );
               case "engine":
                 return (
-                  <div key={i} className="rounded-3xl bg-neutral-950 text-neutral-100 p-5 border border-black/5 shadow-sm">
-                    <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-2">Visual system</div>
-                    <p className="text-xs text-neutral-300 whitespace-pre-wrap mb-4">{item.visualSystem}</p>
-                    <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-2">
+                  <div key={i} className="rounded-3xl bg-surface text-text p-5 border border-black/5 shadow-sm">
+                    <div className="text-[11px] uppercase tracking-widest text-text-dim mb-2">Visual system</div>
+                    <p className="text-xs text-text-dim whitespace-pre-wrap mb-4">{item.visualSystem}</p>
+                    <div className="text-[11px] uppercase tracking-widest text-text-dim mb-2">
                       Master prompt {item.approved ? "· approved ✓" : "· review & edit before generating"}
                     </div>
                     {item.approved ? (
-                      <p className="text-xs text-neutral-300 whitespace-pre-wrap">{item.masterPrompt}</p>
+                      <p className="text-xs text-text-dim whitespace-pre-wrap">{item.masterPrompt}</p>
                     ) : (
                       <>
                         <textarea
                           value={master}
                           onChange={(e) => setMaster(e.target.value)}
                           rows={9}
-                          className="w-full rounded-2xl bg-neutral-900 border border-neutral-700 p-3 text-xs text-neutral-100 font-mono leading-relaxed"
+                          className="w-full rounded-2xl bg-surface-2 border border-line p-3 text-xs text-text font-mono leading-relaxed"
                         />
                         <div className="mt-3 flex justify-end">
-                          <button onClick={approve} disabled={pending} className="rounded-full px-5 py-2 text-sm font-medium bg-white text-neutral-900 hover:bg-neutral-200 disabled:opacity-40">
+                          <button onClick={approve} disabled={pending} className="rounded-full px-5 py-2 text-sm font-medium bg-text text-canvas hover:opacity-90 disabled:opacity-40">
                             Approve & generate image →
                           </button>
                         </div>
@@ -495,7 +495,7 @@ export function StudioFeed({
                 );
               case "image":
                 return (
-                  <div key={i} className="rounded-3xl overflow-hidden bg-neutral-950 border border-black/5 shadow-sm">
+                  <div key={i} className="rounded-3xl overflow-hidden bg-surface border border-black/5 shadow-sm">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={item.url} alt="generated" className="w-full" />
                     <div className="p-3 flex justify-end">
@@ -505,29 +505,29 @@ export function StudioFeed({
                 );
               case "hooks":
                 return (
-                  <div key={i} className="rounded-3xl bg-neutral-950 text-neutral-100 p-5 border border-black/5 shadow-sm">
-                    <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Pick a hook to design onto the image</div>
+                  <div key={i} className="rounded-3xl bg-surface text-text p-5 border border-black/5 shadow-sm">
+                    <div className="text-[11px] uppercase tracking-widest text-text-dim mb-3">Pick a hook to design onto the image</div>
                     <div className="flex flex-col gap-2">
                       {item.hooks.map((h) => (
                         <button key={h.id} onClick={() => overlay(h)} disabled={pending}
                           title={`${h.visual}\n\n${h.why}`}
                           className={`group flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5 text-left text-sm border transition ${
                             item.selected === h.text
-                              ? "bg-white text-neutral-900 border-white"
-                              : "bg-neutral-900 border-neutral-700 text-neutral-100 hover:border-neutral-400"
+                              ? "bg-text text-canvas border-text"
+                              : "bg-surface-2 border-line text-text hover:border-line-strong"
                           }`}>
                           <span>
                             {h.text}
                             {h.emphasis && (
-                              <span className={`ml-2 text-xs ${item.selected === h.text ? "text-neutral-500" : "text-neutral-400"}`}>
+                              <span className={`ml-2 text-xs ${item.selected === h.text ? "text-text-dim" : "text-text-faint"}`}>
                                 accent: {h.emphasis}
                               </span>
                             )}
                           </span>
                           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider border ${
                             item.selected === h.text
-                              ? "border-neutral-300 text-neutral-500"
-                              : "border-neutral-600 text-neutral-400"
+                              ? "border-line text-text-dim"
+                              : "border-line-strong text-text-faint"
                           }`}>
                             {h.framework}
                           </span>
@@ -538,7 +538,7 @@ export function StudioFeed({
                 );
               case "overlay":
                 return (
-                  <div key={i} className="rounded-3xl overflow-hidden bg-neutral-950 border border-black/5 shadow-sm">
+                  <div key={i} className="rounded-3xl overflow-hidden bg-surface border border-black/5 shadow-sm">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={item.url} alt="creative" className="w-full" />
                     <div className="p-3 flex justify-end">
@@ -548,34 +548,34 @@ export function StudioFeed({
                 );
               case "copy":
                 return (
-                  <div key={i} className="rounded-3xl bg-neutral-950 text-neutral-100 p-5 border border-black/5 shadow-sm space-y-3">
-                    <div className="text-[11px] uppercase tracking-widest text-neutral-500">Meta ad copy</div>
+                  <div key={i} className="rounded-3xl bg-surface text-text p-5 border border-black/5 shadow-sm space-y-3">
+                    <div className="text-[11px] uppercase tracking-widest text-text-dim">Meta ad copy</div>
                     <div>
-                      <div className="text-xs text-neutral-500 mb-1">Primary text</div>
+                      <div className="text-xs text-text-dim mb-1">Primary text</div>
                       <p className="text-sm whitespace-pre-wrap">{item.copy.primaryText}</p>
                     </div>
                     <div className="flex gap-8">
-                      <div><div className="text-xs text-neutral-500 mb-1">Headline</div><p className="text-sm font-medium">{item.copy.headline}</p></div>
-                      <div><div className="text-xs text-neutral-500 mb-1">CTA</div><p className="text-sm font-medium">{item.copy.cta}</p></div>
+                      <div><div className="text-xs text-text-dim mb-1">Headline</div><p className="text-sm font-medium">{item.copy.headline}</p></div>
+                      <div><div className="text-xs text-text-dim mb-1">CTA</div><p className="text-sm font-medium">{item.copy.cta}</p></div>
                     </div>
                   </div>
                 );
               case "status":
                 return (
-                  <div key={i} className="flex items-center gap-2 text-sm text-neutral-500 px-2">
-                    <span className="h-2 w-2 rounded-full bg-neutral-400 animate-pulse" />
+                  <div key={i} className="flex items-center gap-2 text-sm text-text-dim px-2">
+                    <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
                     {item.text}
                   </div>
                 );
               case "info":
                 return (
-                  <div key={i} className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 whitespace-pre-wrap">
+                  <div key={i} className="rounded-2xl bg-warn/10 border border-warn/30 px-4 py-3 text-sm text-warn whitespace-pre-wrap">
                     {item.text}
                   </div>
                 );
               case "error":
                 return (
-                  <div key={i} className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 whitespace-pre-wrap">
+                  <div key={i} className="rounded-2xl bg-bad/10 border border-bad/30 px-4 py-3 text-sm text-bad whitespace-pre-wrap">
                     {item.text}
                   </div>
                 );
@@ -588,27 +588,27 @@ export function StudioFeed({
       {/* Floating glass composer with gradient glow */}
       <div className="px-4 pb-6">
         <div className="mx-auto max-w-2xl relative">
-          <div className="absolute -inset-1 rounded-[32px] bg-gradient-to-r from-blue-400/30 via-fuchsia-400/30 to-amber-300/30 blur-2xl" />
-          <div className="relative rounded-[28px] border border-white/70 dark:border-white/10 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-xl shadow-[0_10px_50px_rgba(0,0,0,0.15)] p-3">
+          <div className="absolute -inset-1 rounded-[32px] bg-gradient-to-r from-accent/25 via-accent-2/20 to-warn/15 blur-2xl" />
+          <div className="relative rounded-[28px] border border-line bg-surface/80 backdrop-blur-xl shadow-[0_10px_50px_rgba(0,0,0,0.15)] p-3">
             {previews.length > 0 && (
               <div className="flex gap-2 mb-2 px-1">
                 {previews.map((p, i) => (
                   <div key={i} className="relative group">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p} alt="" className="h-14 w-14 rounded-xl object-cover border border-black/10 dark:border-white/20" />
+                    <img src={p} alt="" className="h-14 w-14 rounded-xl object-cover border border-line-strong" />
                     <button
                       onClick={() => {
                         const nf = files.filter((_, j) => j !== i);
                         setFiles(nf);
                         setPreviews(nf.map((f) => URL.createObjectURL(f)));
                       }}
-                      className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-neutral-900 text-white text-xs leading-none opacity-0 group-hover:opacity-100"
+                      className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-text text-canvas text-xs leading-none opacity-0 group-hover:opacity-100"
                     >
                       ×
                     </button>
                   </div>
                 ))}
-                <button onClick={clearFiles} className="text-xs text-neutral-500 hover:text-neutral-800 self-center">clear</button>
+                <button onClick={clearFiles} className="text-xs text-text-dim hover:text-text self-center">clear</button>
               </div>
             )}
 
@@ -636,16 +636,16 @@ export function StudioFeed({
             <div className="flex items-center justify-between mt-1">
               <div className="flex items-center gap-2">
                 <button onClick={() => fileInput.current?.click()} title="Attach product photos" disabled={!!batchId || (categories.length > 0 && !productName)}
-                  className="h-9 w-9 rounded-full bg-white/70 dark:bg-white/10 border border-black/5 dark:border-white/10 text-lg leading-none hover:bg-white disabled:opacity-40">+</button>
-                <span className="rounded-full px-3 py-1.5 text-xs font-medium bg-white/70 dark:bg-white/10 border border-black/5 dark:border-white/10">Image</span>
-                <span className="rounded-full px-3 py-1.5 text-xs text-neutral-400 border border-transparent" title="Coming soon">Video</span>
+                  className="h-9 w-9 rounded-full bg-raised border border-line text-lg leading-none hover:bg-line disabled:opacity-40">+</button>
+                <span className="rounded-full px-3 py-1.5 text-xs font-medium bg-raised border border-line">Image</span>
+                <span className="rounded-full px-3 py-1.5 text-xs text-text-faint border border-transparent" title="Coming soon">Video</span>
               </div>
               <button onClick={send} disabled={pending || !brief.trim() || !!batchId || (categories.length > 0 && !productName)}
-                className="h-10 w-10 rounded-full bg-neutral-900 text-white grid place-items-center hover:bg-neutral-700 disabled:opacity-40 dark:bg-white dark:text-neutral-900">
+                className="h-10 w-10 rounded-full bg-text text-canvas grid place-items-center hover:opacity-90 disabled:opacity-40">
                 {pending ? "…" : "↑"}
               </button>
             </div>
-            <div className="mt-2 h-1 rounded-full bg-gradient-to-r from-blue-400 via-fuchsia-400 to-amber-300 opacity-70" />
+            <div className="mt-2 h-1 rounded-full bg-gradient-to-r from-accent via-accent-2 to-warn opacity-60" />
           </div>
           <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => addFiles(Array.from(e.target.files ?? []))} />
         </div>

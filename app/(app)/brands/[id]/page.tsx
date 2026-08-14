@@ -30,43 +30,43 @@ export default async function BrandPage({
   return (
     <div>
       <div className="mb-6">
-        <Link href="/" className="text-sm text-neutral-500 hover:underline">
+        <Link href="/" className="text-sm text-text-dim hover:underline">
           ← Brands
         </Link>
         <h1 className="text-xl font-semibold mt-2">{brand.name}</h1>
-        <p className="text-sm text-neutral-500 capitalize">{brand.status}</p>
+        <p className="text-sm text-text-dim capitalize">{brand.status}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
             href={`/brands/${brand.id}/studio`}
-            className="inline-block rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-800 dark:bg-white dark:text-neutral-900"
+            className="inline-block rounded-md bg-text text-canvas px-4 py-2 text-sm font-medium hover:opacity-90"
           >
             Open Image Studio →
           </Link>
           <Link
             href={`/brands/${brand.id}/settings`}
-            className="inline-block rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            className="inline-block rounded-md border border-line px-4 py-2 text-sm font-medium hover:bg-raised"
           >
             Brand profile
           </Link>
         </div>
       </div>
 
-      <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-6">
+      <div className="rounded-lg border border-line p-6">
         <h2 className="font-medium mb-4">Creative workflow</h2>
         <ol className="space-y-3">
           {steps.map((s) => (
             <li key={s.n} className="flex items-start gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-200 dark:bg-neutral-800 text-xs font-semibold">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-raised text-xs font-semibold">
                 {s.n}
               </span>
               <div>
                 <div className="text-sm font-medium">{s.title}</div>
-                <div className="text-xs text-neutral-500">{s.desc}</div>
+                <div className="text-xs text-text-dim">{s.desc}</div>
               </div>
             </li>
           ))}
         </ol>
-        <p className="mt-6 text-sm text-neutral-500">
+        <p className="mt-6 text-sm text-text-dim">
           The full step-by-step workflow is being built next. For now, try{" "}
           <Link href={`/brands/${brand.id}/studio`} className="underline">
             Image Studio

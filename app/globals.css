@@ -1,26 +1,138 @@
 @import "tailwindcss";
 
+/*
+ * One dark design system for the whole app (BUILD_PLAN decision #12), which
+ * retires the earlier light "ORRISO" styling.
+ *
+ * The theme is FORCED dark rather than following the OS: this is a creative
+ * tool whose whole job is judging images, and a surface that flips between
+ * light and dark changes how those images read. `dark:` variants are kept
+ * working via the custom variant below so existing markup still applies.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces, back to front */
+  --canvas: #0b0b0f;
+  --surface: #14141a;
+  --surface-2: #1b1b23;
+  --raised: #22222c;
+  --line: #2a2a35;
+  --line-strong: #3a3a48;
+
+  /* Text */
+  --text: #f2f2f5;
+  --text-dim: #a1a1ad;
+  --text-faint: #6e6e7c;
+
+  /* Accents — used for node ports, edges and status, not brand colors */
+  --accent: #6ea8ff;
+  --accent-2: #c084fc;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+
+  --background: var(--canvas);
+  --foreground: var(--text);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-text-dim: var(--text-dim);
+  --color-text-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Dark scrollbars — a light scrollbar on a dark canvas is jarring. */
+* {
+  scrollbar-color: var(--line-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Native controls (selects, colour swatches, file buttons) inherit the theme. */
+select,
+input,
+textarea {
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+ * Shared primitives — so pages stop re-deriving the same six utility strings.
+ * ------------------------------------------------------------------------ */
+@utility panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+}
+
+@utility field {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+@utility field-focus {
+  outline: none;
+  border-color: var(--line-strong);
+}
+
+@utility btn-primary {
+  border-radius: 999px;
+  padding: 0.5rem 1.15rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: var(--text);
+  color: var(--canvas);
+}
+
+@utility btn-ghost {
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+@utility label-caps {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
