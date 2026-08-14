@@ -131,6 +131,40 @@ export default function BrandProfileForm({
     }
   };
 
+  // ---------- Product catalog import ----------
+  const [prodImporting, setProdImporting] = useState(false);
+  const [prodMsg, setProdMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const runProductImport = async () => {
+    if (!siteUrl.trim() || prodImporting) return;
+    setProdImporting(true);
+    setProdMsg(null);
+    try {
+      const res = await fetch("/api/product-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brandId, url: siteUrl.trim() }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setProdMsg({ ok: false, text: j.error ?? "Product import failed." });
+        return;
+      }
+      const cats = (j.categories ?? []) as { name: string; count: number }[];
+      setProdMsg({
+        ok: true,
+        text: `Imported ${j.productCount} products across ${cats.length} categories (${j.platform.toUpperCase()} site): ${cats
+          .map((c) => `${c.name} (${c.count})`)
+          .join(", ")}`,
+      });
+      router.refresh();
+    } catch (e) {
+      setProdMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setProdImporting(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* ---------- Import from website ---------- */}
@@ -173,6 +207,40 @@ export default function BrandProfileForm({
             {importMsg.text}
           </p>
         )}
+
+        <div className="mt-5 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium">Product catalog</div>
+              <p className="text-xs text-neutral-500">
+                Pull the rental inventory (categories, product names, prices) from
+                the same address. Works with Event Rental Systems and Inflatable
+                Office sites. Product photos load by script on those platforms, so
+                they aren&apos;t imported — creatives are generated from the
+                product name.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={runProductImport}
+              disabled={prodImporting || !siteUrl.trim()}
+              className="shrink-0 rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium hover:bg-neutral-100 dark:hover:bg-neutral-900 disabled:opacity-40"
+            >
+              {prodImporting ? "Reading catalog…" : "Import products"}
+            </button>
+          </div>
+          {prodMsg && (
+            <p
+              className={`mt-3 rounded-md px-3 py-2 text-sm border ${
+                prodMsg.ok
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-red-50 text-red-700 border-red-200"
+              }`}
+            >
+              {prodMsg.text}
+            </p>
+          )}
+        </div>
       </section>
 
       <form action={formAction} className="space-y-8">
