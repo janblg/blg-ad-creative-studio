@@ -37,10 +37,16 @@ export default async function BrandPage({
         <p className="text-sm text-text-dim capitalize">{brand.status}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
-            href={`/brands/${brand.id}/studio`}
+            href={`/brands/${brand.id}/board`}
             className="inline-block rounded-md bg-text text-canvas px-4 py-2 text-sm font-medium hover:opacity-90"
           >
-            Open Image Studio →
+            Open Board →
+          </Link>
+          <Link
+            href={`/brands/${brand.id}/studio`}
+            className="inline-block rounded-md border border-line px-4 py-2 text-sm font-medium hover:bg-raised"
+          >
+            Chat view
           </Link>
           <Link
             href={`/brands/${brand.id}/settings`}

@@ -46,6 +46,12 @@ export default async function StudioPage({
           <span className="text-[11px] uppercase tracking-widest text-text-faint mr-2">Format</span>
           <span className="text-sm font-medium">4:5 Feed</span>
         </div>
+        <a
+          href={`/brands/${brand.id}/board`}
+          className="rounded-full border border-line bg-raised px-4 py-2 text-sm font-medium hover:bg-line"
+        >
+          Board view →
+        </a>
       </div>
       <div className="h-full pt-16">
         <StudioFeed
