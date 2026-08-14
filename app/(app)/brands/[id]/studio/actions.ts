@@ -126,6 +126,7 @@ export interface SuggestedProduct {
   id: string;
   name: string;
   priceText?: string;
+  imageUrl?: string;
   why?: string;
 }
 
@@ -138,7 +139,7 @@ export async function suggestProducts(args: {
     const supabase = await supabaseServer();
     const { data } = await supabase
       .from("products")
-      .select("id, name, price_text")
+      .select("id, name, price_text, image_url")
       .eq("brand_id", args.brandId)
       .eq("category", args.category)
       .eq("status", "active")
@@ -148,6 +149,7 @@ export async function suggestProducts(args: {
       id: p.id as string,
       name: p.name as string,
       priceText: (p.price_text as string | null) ?? undefined,
+      imageUrl: (p.image_url as string | null) ?? undefined,
     }));
     if (all.length <= 5) return { products: all };
 
@@ -215,21 +217,47 @@ export async function startBrief(args: {
 
     // The catalog product becomes the hero of the scene.
     let productName: string | null = null;
+    let productImageUrl: string | null = null;
     if (args.productId) {
       const supabase = await supabaseServer();
       const { data } = await supabase
         .from("products")
-        .select("name")
+        .select("name, image_url")
         .eq("id", args.productId)
         .limit(1);
       productName = (data?.[0]?.name as string | undefined) ?? null;
+      productImageUrl = (data?.[0]?.image_url as string | undefined) ?? null;
+    }
+
+    // The catalog photo becomes the reference image, so the ad shows the
+    // client's ACTUAL unit rather than a generic one. An explicitly uploaded
+    // photo always wins over the catalog shot.
+    const refs = [...args.refs];
+    if (!refs.length && productImageUrl) {
+      try {
+        const { fetchImage } = await import("@/lib/import/website");
+        const { normalizeToPng } = await import("@/lib/images/normalize");
+        const got = await fetchImage(productImageUrl);
+        if (got) {
+          const png = await normalizeToPng(got.buffer, 1024);
+          const path = `${orgId}/studio/refs/${crypto.randomUUID()}.png`;
+          await upload(path, png, "image/png");
+          refs.push({
+            path,
+            visionB64: await toVisionJpegBase64(png, 1024),
+          });
+        }
+      } catch {
+        // No catalog photo is not fatal — the engine still describes the
+        // product by name.
+      }
     }
 
     const engine = await buildMasterPrompt({
       brief: briefWithProduct(brief, productName),
       apiKey: key,
-      referenceImages: args.refs.length
-        ? args.refs.map((r) => ({ b64: r.visionB64, mime: "image/jpeg" }))
+      referenceImages: refs.length
+        ? refs.map((r) => ({ b64: r.visionB64, mime: "image/jpeg" }))
         : undefined,
       brandContext: engineStyleDirective(profile),
     });
@@ -237,7 +265,7 @@ export async function startBrief(args: {
     const admin = supabaseAdmin();
     // Product photos become first-class reference assets.
     const refIds: string[] = [];
-    for (const r of args.refs) {
+    for (const r of refs) {
       const { data, error } = await admin
         .from("image_assets")
         .insert({

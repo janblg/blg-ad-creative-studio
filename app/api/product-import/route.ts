@@ -19,9 +19,9 @@ export const dynamic = "force-dynamic";
  *
  * Targets the two platforms BLG's clients actually use: ERS (Event Rental
  * Systems, files.sysers.com) and IO (Inflatable Office). Categories come from
- * the homepage; products from each category page. Photos are deliberately not
- * imported — verified that ERS renders them client-side — so a product is
- * name + category + price + source URL, and its photo is optional.
+ * the homepage; products from each category page, each with its real photo URL
+ * (kept as a URL rather than downloaded — a catalog runs to hundreds of items
+ * and the file is only needed once a product is actually chosen for an ad).
  */
 
 const MAX_CATEGORIES = 14;
@@ -128,6 +128,7 @@ export async function POST(req: Request) {
       category: p.category ?? null,
       source_url: p.url,
       price_text: p.priceText ?? null,
+      image_url: p.imageUrl ?? null,
       status: "active",
     }));
 
@@ -147,6 +148,7 @@ export async function POST(req: Request) {
       url,
       categories: perCategory.filter((c) => c.count > 0),
       productCount: products.length,
+      withImages: products.filter((p) => p.imageUrl).length,
     });
   } catch (e) {
     if (isRedirectError(e)) {

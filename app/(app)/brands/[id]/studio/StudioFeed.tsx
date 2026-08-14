@@ -419,13 +419,23 @@ export function StudioFeed({
                               : "bg-neutral-900 border-neutral-700 text-neutral-100 hover:border-neutral-400"
                           }`}
                         >
-                          <span>
-                            <span className="font-medium">{p.name}</span>
-                            {p.why && (
-                              <span className={`block text-xs mt-0.5 ${item.selected === p.name ? "text-neutral-500" : "text-neutral-400"}`}>
-                                {p.why}
-                              </span>
+                          <span className="flex items-center gap-3 min-w-0">
+                            {p.imageUrl && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={p.imageUrl}
+                                alt=""
+                                className="h-14 w-14 shrink-0 rounded-xl object-cover border border-black/10 dark:border-white/15 bg-white"
+                              />
                             )}
+                            <span className="min-w-0">
+                              <span className="font-medium">{p.name}</span>
+                              {p.why && (
+                                <span className={`block text-xs mt-0.5 ${item.selected === p.name ? "text-neutral-500" : "text-neutral-400"}`}>
+                                  {p.why}
+                                </span>
+                              )}
+                            </span>
                           </span>
                           {p.priceText && (
                             <span className="shrink-0 text-xs text-neutral-400">{p.priceText}</span>

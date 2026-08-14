@@ -153,7 +153,7 @@ export default function BrandProfileForm({
       const cats = (j.categories ?? []) as { name: string; count: number }[];
       setProdMsg({
         ok: true,
-        text: `Imported ${j.productCount} products across ${cats.length} categories (${j.platform.toUpperCase()} site): ${cats
+        text: `Imported ${j.productCount} products (${j.withImages ?? 0} with photos) across ${cats.length} categories from the ${j.platform.toUpperCase()} site: ${cats
           .map((c) => `${c.name} (${c.count})`)
           .join(", ")}`,
       });
@@ -213,11 +213,11 @@ export default function BrandProfileForm({
             <div>
               <div className="text-sm font-medium">Product catalog</div>
               <p className="text-xs text-neutral-500">
-                Pull the rental inventory (categories, product names, prices) from
-                the same address. Works with Event Rental Systems and Inflatable
-                Office sites. Product photos load by script on those platforms, so
-                they aren&apos;t imported — creatives are generated from the
-                product name.
+                Pull the rental inventory — categories, product names, prices and
+                product photos — from the same address. Works with Event Rental
+                Systems and Inflatable Office sites. The photo of the product you
+                pick becomes the reference for its ad, so the client&apos;s actual
+                unit appears in the creative.
               </p>
             </div>
             <button

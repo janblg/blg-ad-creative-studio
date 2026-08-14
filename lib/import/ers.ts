@@ -10,11 +10,12 @@
  *   /category/<slug>/      → links to /items/<slug>/   (server-rendered)
  *   /items/<slug>/         → <h1 class="item-title">Name</h1>, price as $N
  *
- * IMPORTANT, verified: ERS renders product PHOTOS via JavaScript — a category
- * page with 33 items carries only 7 images, all site chrome. So an import
- * yields names/categories/prices/URLs, and photos stay optional (uploaded per
- * product, or the creative is generated from the product name, which the
- * Hyperrealism engine handles well).
+ * Product PHOTOS are server-rendered after all. An earlier pass concluded they
+ * were script-loaded, but that was a matcher bug: the CDN URLs are
+ * PROTOCOL-RELATIVE (`//files.sysers.com/...`) and the pattern required
+ * `https://`. Cards link the `/items/med/` thumbnail and the same file exists
+ * un-prefixed at full size, so `med/` is stripped for a print-quality
+ * reference. See productImageFrom().
  *
  * Not "server-only" — scripts must be able to exercise this against real sites.
  */
@@ -31,6 +32,8 @@ export interface ImportedProduct {
   url: string;
   category?: string;
   priceText?: string;
+  /** Full-size product photo on the platform's CDN, if the card carried one. */
+  imageUrl?: string;
 }
 
 const absolute = (href: string, base: string): string | null => {
@@ -76,8 +79,8 @@ function anchorsMatching(
   html: string,
   base: string,
   re: RegExp,
-): { url: string; text: string }[] {
-  const out = new Map<string, string>();
+): { url: string; text: string; inner: string }[] {
+  const out = new Map<string, { text: string; inner: string }>();
   for (const m of html.matchAll(
     /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
   )) {
@@ -91,12 +94,15 @@ function anchorsMatching(
       .replace(/&nbsp;/g, " ")
       .replace(/\s+/g, " ")
       .trim();
-    // Keep the richest label seen for a URL (thumbnails often link with none).
-    if (!out.has(url) || text.length > (out.get(url) ?? "").length) {
-      out.set(url, text);
-    }
+    const prev = out.get(url);
+    // Keep the richest label, and never lose an inner <img> we already saw:
+    // a product is linked several times per card (thumbnail, title, button).
+    out.set(url, {
+      text: !prev || text.length > prev.text.length ? text : prev.text,
+      inner: prev?.inner && /<img/i.test(prev.inner) ? prev.inner : m[2],
+    });
   }
-  return [...out.entries()].map(([url, text]) => ({ url, text }));
+  return [...out.entries()].map(([url, v]) => ({ url, ...v }));
 }
 
 export function extractCategories(
@@ -121,7 +127,7 @@ export function extractItems(
   category?: string,
 ): ImportedProduct[] {
   const re = platform === "io" ? ITEM_RE.io : ITEM_RE.ers;
-  return anchorsMatching(html, base, re).map(({ url, text }) => {
+  return anchorsMatching(html, base, re).map(({ url, text, inner }) => {
     const slug = new URL(url).pathname.replace(/\/$/, "").split("/").pop() ?? "";
     const fromSlug = nameFromSlug(slug);
     // The SLUG is the reliable name here: an item is linked several times per
@@ -140,6 +146,7 @@ export function extractItems(
       url,
       category,
       priceText: text.match(/\$\s?\d[\d,.]*/)?.[0],
+      imageUrl: productImageFrom(inner, base),
     };
   });
 }
@@ -152,4 +159,30 @@ export function itemNameFromPage(html: string): string | undefined {
   if (!raw) return undefined;
   const text = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   return text.length >= 3 && text.length <= 120 ? text : undefined;
+}
+
+/**
+ * The product photo inside a card.
+ *
+ * Two things bit me here and are worth keeping written down:
+ *  1. These CDN URLs are **protocol-relative** (`//files.sysers.com/...`), so a
+ *     matcher anchored on `https://` silently finds nothing. `new URL(src, base)`
+ *     resolves them correctly.
+ *  2. Cards link the thumbnail (`/items/med/x.jpg`); the same file exists
+ *     un-prefixed (`/items/x.jpg`) at full size — verified 200 on both — so the
+ *     `med/` segment is dropped for a print-quality reference.
+ */
+export function productImageFrom(innerHtml: string, base: string): string | undefined {
+  for (const tag of innerHtml.match(/<img\b[^>]*>/gi) ?? []) {
+    const src =
+      tag.match(/\bdata-src\s*=\s*["']([^"']+)["']/i)?.[1] ??
+      tag.match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1];
+    if (!src || src.startsWith("data:")) continue;
+    const url = absolute(src, base);
+    if (!url) continue;
+    // Only real item photos — skip logos, banners and editor chrome.
+    if (!/\/items\//i.test(url)) continue;
+    return url.replace(/\/items\/med\//i, "/items/");
+  }
+  return undefined;
 }
