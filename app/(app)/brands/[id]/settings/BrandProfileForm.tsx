@@ -1,6 +1,7 @@
 "use client";
 import { useActionState, useRef, useState, useTransition } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { saveProfile, removeFont, removeLogo, type SaveResult } from "./actions";
 
 type ColorRole = "primary" | "secondary" | "hook_accent" | "hook_text" | "palette";
@@ -95,8 +96,85 @@ export default function BrandProfileForm({
   const setRow = (i: number, patch: Partial<ColorRow>) =>
     setColors((c) => c.map((row, j) => (j === i ? { ...row, ...patch } : row)));
 
+  // ---------- Website import ----------
+  const router = useRouter();
+  const [siteUrl, setSiteUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const runImport = async () => {
+    if (!siteUrl.trim() || importing) return;
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const res = await fetch("/api/brand-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brandId, url: siteUrl.trim() }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setImportMsg({ ok: false, text: j.error ?? "Import failed." });
+        return;
+      }
+      if (Array.isArray(j.colors) && j.colors.length) setColors(j.colors as ColorRow[]);
+      setImportMsg({
+        ok: true,
+        text: `Found ${j.colors?.length ?? 0} colors${j.logo ? " and a logo" : " (no logo found)"} on ${j.title || j.url}. Review below, then Save.`,
+      });
+      // The logo is already stored server-side; refresh to show it.
+      if (j.logo) router.refresh();
+    } catch (e) {
+      setImportMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
+      {/* ---------- Import from website ---------- */}
+      <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-5">
+        <h2 className="font-medium mb-1">Import from website</h2>
+        <p className="text-xs text-neutral-500 mb-4">
+          Paste the client&apos;s website and we&apos;ll pull their logo and brand
+          colors. Colors land in the palette below for you to check before saving.
+        </p>
+        <div className="flex gap-2">
+          <input
+            value={siteUrl}
+            onChange={(e) => setSiteUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                runImport();
+              }
+            }}
+            placeholder="jumpnbounce.com"
+            className="flex-1 rounded-md border border-neutral-300 px-3 py-2 text-sm dark:bg-neutral-900 dark:border-neutral-700"
+          />
+          <button
+            type="button"
+            onClick={runImport}
+            disabled={importing || !siteUrl.trim()}
+            className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-800 disabled:opacity-40 dark:bg-white dark:text-neutral-900"
+          >
+            {importing ? "Reading site…" : "Import"}
+          </button>
+        </div>
+        {importMsg && (
+          <p
+            className={`mt-3 rounded-md px-3 py-2 text-sm border ${
+              importMsg.ok
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-red-50 text-red-700 border-red-200"
+            }`}
+          >
+            {importMsg.text}
+          </p>
+        )}
+      </section>
+
       <form action={formAction} className="space-y-8">
         <input type="hidden" name="brandId" value={brandId} />
         <input type="hidden" name="colors" value={JSON.stringify(colors)} />
